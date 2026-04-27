@@ -69,16 +69,51 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// Gets the arrival port of the vessel's current partial service route.
+        /// Gets the port where the vessel should occupy a berth.
+        /// 
+        /// If CurrentPartialServiceRoute is null, the vessel is considered to be
+        /// at the departure port of the first partial service route in its assigned service route.
+        /// Otherwise, the vessel is considered to arrive at the arrival port of its current partial service route.
+        /// 
         /// Throws if routing state is incomplete.
         /// </summary>
         private Port GetArrivalPortOrThrow(Vessel vessel)
         {
             if (vessel.CurrentPartialServiceRoute == null)
             {
-                throw new InvalidOperationException(
-                    $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
-                    $"Vessel {vessel.Index} has null CurrentPartialServiceRoute.");
+                if (vessel.AssignedServiceRoute == null)
+                {
+                    throw new InvalidOperationException(
+                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
+                        $"Vessel {vessel.Index} has null AssignedServiceRoute.");
+                }
+
+                var firstPartialRoute = vessel.AssignedServiceRoute.PartialServiceRoutes.FirstOrDefault();
+
+                if (firstPartialRoute == null)
+                {
+                    throw new InvalidOperationException(
+                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
+                        $"Vessel {vessel.Index} has no PartialServiceRoutes in AssignedServiceRoute.");
+                }
+
+                if (firstPartialRoute.AssociatedLeg == null)
+                {
+                    throw new InvalidOperationException(
+                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
+                        $"First PartialServiceRoute of Vessel {vessel.Index} has null AssociatedLeg.");
+                }
+
+                var departurePort = firstPartialRoute.AssociatedLeg.DeparturePort;
+
+                if (departurePort == null)
+                {
+                    throw new InvalidOperationException(
+                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
+                        $"First PartialServiceRoute of Vessel {vessel.Index} has null DeparturePort.");
+                }
+
+                return departurePort;
             }
 
             if (vessel.CurrentPartialServiceRoute.AssociatedLeg == null)

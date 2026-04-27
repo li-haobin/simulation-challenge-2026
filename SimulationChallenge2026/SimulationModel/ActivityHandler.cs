@@ -193,7 +193,7 @@ namespace SimulationChallenge2026
         {
             if (!EnableLog) return;
 
-            var time = $"[{ClockTime:d\\.hh\\:mm\\:ss}]";
+            var time = $"[{ClockTime:yyyy-MM-dd HH:mm:ss}]";
 
             if (load == null)
                 Console.WriteLine($"{time} {Id} | {eventName}");

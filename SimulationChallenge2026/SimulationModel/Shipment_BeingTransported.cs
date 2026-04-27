@@ -103,7 +103,7 @@ namespace SimulationChallenge2026
                             $"Shipment {shipment.Index} is loaded onto vessel {vessel.Index} " +
                             $"without requesting start.");
                     }
-
+                    if (shipment.Index == 3107) ;
                     shipment.CarryingVessel = vessel;
                     Start(shipment);
                 }
@@ -159,7 +159,7 @@ namespace SimulationChallenge2026
                             $"{currentBooking.ArrivalPort.Name} does not match vessel {vessel.Index} " +
                             $"current leg departure port {currentLegDeparturePort.Name}.");
                     }
-
+                    if (shipment.Index == 3107) ;
                     shipment.CarryingVessel = null;
                     Finish(shipment);
                 }

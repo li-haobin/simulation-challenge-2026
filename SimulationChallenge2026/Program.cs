@@ -32,4 +32,6 @@ var context = MaritimeDataInitializer.Create();
 //var sim = new Queueing(seed: 1);
 
 var sim = new Model(context, seed: 1);
-sim.Run(TimeSpan.FromDays(14));
+sim.Run(TimeSpan.FromDays(120));
+
+Console.WriteLine();

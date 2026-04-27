@@ -51,25 +51,25 @@ namespace SimulationChallenge2026
                 new Shipment_BeingTransported(seed: DefaultRS.Next()) { EnableLog = true });
 
             Vessel_AwaitingInstructions = AddChild(
-                new Vessel_AwaitingInstructions(seed: DefaultRS.Next()) { EnableLog = true });
+                new Vessel_AwaitingInstructions(seed: DefaultRS.Next()) { EnableLog = false });
 
             Vessel_Sailing = AddChild(
-                new Vessel_Sailing(seed: DefaultRS.Next()) { EnableLog = true });
+                new Vessel_Sailing(seed: DefaultRS.Next()) { EnableLog = false });
 
             Vessel_QueuingForBerth = AddChild(
-                new Vessel_QueuingForBerth(seed: DefaultRS.Next()) { EnableLog = true });
+                new Vessel_QueuingForBerth(seed: DefaultRS.Next()) { EnableLog = false });
 
             Vessel_BeingServed = AddChild(
                 new Vessel_BeingServed(seed: DefaultRS.Next()) { EnableLog = true });
 
             Berth_Idle = AddChild(
-                new Berth_Idle(seed: DefaultRS.Next()) { EnableLog = true });
+                new Berth_Idle(seed: DefaultRS.Next()) { EnableLog = false });
 
             Berth_Berthing = AddChild(
-                new Berth_Berthing(seed: DefaultRS.Next()) { EnableLog = true });
+                new Berth_Berthing(seed: DefaultRS.Next()) { EnableLog = false });
 
             Berth_HandlingCargo = AddChild(
-                new Berth_HandlingCargo(seed: DefaultRS.Next()) { EnableLog = true });
+                new Berth_HandlingCargo(seed: DefaultRS.Next()) { EnableLog = false });
 
             // =========================================================
             // 🔗 Event Wiring (Core System Logic)
@@ -80,7 +80,6 @@ namespace SimulationChallenge2026
             Shipment_WaitingForLoadingAtOriginPort.ConnectTo(Shipment_BeingTransported);
             Shipment_BeingTransported.ConnectTo(Shipment_WaitingForLoadingAtTransshipmentPort, shipment => !shipment.IsAtLastBooking());
             Shipment_BeingTransported.Terminate(shipment => shipment.IsAtLastBooking());
-            Shipment_BeingTransported.ConnectTo(Shipment_WaitingForLoadingAtTransshipmentPort);
             Shipment_WaitingForLoadingAtTransshipmentPort.ConnectTo(Shipment_BeingTransported);
 
             // --- Vessel flow ---
@@ -107,7 +106,7 @@ namespace SimulationChallenge2026
 
             // Vessel service drives shipment transport state transition
             Vessel_BeingServed.OnStart.Add(Shipment_BeingTransported.SignalStart);
-            Vessel_BeingServed.OnStart.Add(Shipment_BeingTransported.SignalFinish);
+            Vessel_BeingServed.OnFinish.Add(Shipment_BeingTransported.SignalFinish);
 
             // Vessel queueing and berth assignment coordination
             Vessel_QueuingForBerth.OnStart.Add(Berth_Idle.SignalFinish);
