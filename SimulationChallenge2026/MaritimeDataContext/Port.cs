@@ -16,9 +16,6 @@ namespace SimulationChallenge2026
         public List<Demand> IncomingDemands { get; set; } = new();
         public List<Shipment> ShipmentsInStorage { get; set; } = new();
 
-        public List<Booking> OutgoingBookings { get; set; } = new();
-        public List<Booking> IncomingBookings { get; set; } = new();
-
         public override string ToString() => Name;
     }
 

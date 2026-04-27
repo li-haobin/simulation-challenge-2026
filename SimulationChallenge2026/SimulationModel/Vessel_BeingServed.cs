@@ -123,84 +123,49 @@ namespace SimulationChallenge2026
 
             foreach (var vessel in R_LoadsRequestedStart.ToList())
             {
-                var currentBerth = vessel.CurrentBerth
-                    ?? throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptStart | " +
-                        $"Vessel {vessel.Index} has no current berth.");
-
-                var currentPort = currentBerth.Port
-                    ?? throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptStart | " +
-                        $"Vessel {vessel.Index} current berth has no port.");
-
                 var assignedServiceRoute = vessel.AssignedServiceRoute
                     ?? throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptStart | " +
+                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptStart | " +
                         $"Vessel {vessel.Index} has no assigned service route.");
 
                 var vesselClass = vessel.VesselClass
                     ?? throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptStart | " +
+                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptStart | " +
                         $"Vessel {vessel.Index} has no vessel class.");
 
-                // Candidate shipments:
-                // - currently signalled
-                // - currently unassigned to any vessel
-                // - whose current booking is on the same service route
-                // - and whose departure port matches the vessel's current port
-                var candidateShipments = P_StartSignals
-                    .Where(shipment =>
-                    {
-                        if (shipment.CarryingVessel != null)
-                        {
-                            throw new InvalidOperationException(
-                                $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptStart | " +
-                                $"Shipment {shipment.Index} already assigned to vessel {shipment.CarryingVessel.Index}.");
-                        }
+                var currentPartialServiceRoute = vessel.CurrentPartialServiceRoute;
 
-                        var booking = shipment.GetCurrentBooking();
+                // Loading should be based on the next partial service route.
+                // If CurrentPartialServiceRoute is null, GetNextPartialServiceRoute()
+                // returns the first partial service route.
+                var nextPartialServiceRoute = vessel.GetNextPartialServiceRoute();
 
-                        return booking.ServiceRoute == assignedServiceRoute
-                            && booking.DeparturePort == currentPort;
-                    })
-                    .ToList();
+                int? currentSequenceIndex = currentPartialServiceRoute?.SequenceIndex;
+                int nextSequenceIndex = nextPartialServiceRoute.SequenceIndex;
 
-                // Current onboard TEU excluding shipments to be discharged at this port
-                int occupiedTeu = vessel.CarriedShipments
-                    .Where(shipment => shipment.GetCurrentBooking().ArrivalPort != currentPort)
-                    .Sum(shipment => shipment.TeuSize);
+                var candidateShipments = GetCandidateShipmentsForLoading(
+                   assignedServiceRoute,
+                   nextSequenceIndex);
+
+                int occupiedTeu = CalculateOccupiedTeuBeforeLoading(
+                    vessel,
+                    assignedServiceRoute,
+                    currentSequenceIndex);
 
                 int remainingCapacity = vesselClass.TeuCapacity - occupiedTeu;
 
                 if (remainingCapacity < 0)
                 {
                     throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptStart | " +
-                        $"Vessel {vessel.Index} exceeds TEU capacity before loading.");
+                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptStart | " +
+                        $"Vessel {vessel.Index} exceeds TEU capacity before loading. " +
+                        $"Occupied TEU: {occupiedTeu}, capacity: {vesselClass.TeuCapacity}.");
                 }
 
-                // Select a subset of candidate shipments that fits into remaining capacity
-                var selectedShipments = new List<Shipment>();
-                int selectedTeu = 0;
+                var selectedShipments = SelectShipmentsWithinCapacity(
+                    candidateShipments,
+                    remainingCapacity);
 
-                foreach (var shipment in candidateShipments)
-                {
-                    if (shipment.TeuSize <= 0)
-                    {
-                        throw new InvalidOperationException(
-                            $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptStart | " +
-                            $"Shipment {shipment.Index} has non-positive TEU size.");
-                    }
-
-                    if (selectedTeu + shipment.TeuSize > remainingCapacity)
-                        continue;
-
-                    selectedShipments.Add(shipment);
-                    selectedTeu += shipment.TeuSize;
-                }
-
-                // Add selected shipments to the vessel.
-                // Shipment-side carrying state is handled in shipment activities, not here.
                 foreach (var shipment in selectedShipments)
                 {
                     if (!vessel.CarriedShipments.Contains(shipment))
@@ -211,9 +176,99 @@ namespace SimulationChallenge2026
                     P_StartSignals.Remove(shipment);
                 }
 
-                // Start even if no loading occurs
                 Start(vessel);
             }
+        }
+
+        /// <summary>
+        /// Finds pending shipments that can be loaded onto the vessel for its
+        /// next partial service route.
+        /// </summary>
+        private List<Shipment> GetCandidateShipmentsForLoading(
+            ServiceRoute assignedServiceRoute,
+            int nextSequenceIndex)
+        {
+            return P_StartSignals
+                .Where(shipment =>
+                {
+                    if (shipment.CarryingVessel != null)
+                    {
+                        throw new InvalidOperationException(
+                            $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptStart | " +
+                            $"Shipment {shipment.Index} already assigned to vessel " +
+                            $"{shipment.CarryingVessel.Index}.");
+                    }
+
+                    var booking = shipment.GetCurrentBooking();
+
+                    return booking.ServiceRoute == assignedServiceRoute
+                        && booking.DepartureSegmentIndex == nextSequenceIndex;
+                })
+                .ToList();
+        }
+
+        /// <summary>
+        /// Calculates the vessel's occupied TEU before loading.
+        ///
+        /// If currentSequenceIndex is null, the vessel has no current partial service route,
+        /// so no shipment is excluded as being discharged at the current segment.
+        /// </summary>
+        private int CalculateOccupiedTeuBeforeLoading(
+            Vessel vessel,
+            ServiceRoute assignedServiceRoute,
+            int? currentSequenceIndex)
+        {
+            return vessel.CarriedShipments
+                .Where(shipment =>
+                {
+                    var booking = shipment.GetCurrentBooking();
+
+                    if (booking.ServiceRoute != assignedServiceRoute)
+                    {
+                        throw new InvalidOperationException(
+                            $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptStart | " +
+                            $"Shipment {shipment.Index} current booking service route " +
+                            $"{booking.ServiceRoute?.Id} does not match vessel {vessel.Index} " +
+                            $"assigned service route {assignedServiceRoute.Id}.");
+                    }
+
+                    if (currentSequenceIndex == null)
+                        return true;
+
+                    return booking.ArrivalSegmentIndex != currentSequenceIndex.Value;
+                })
+                .Sum(shipment => shipment.TeuSize);
+        }
+
+        /// <summary>
+        /// Selects shipments greedily from the candidate list until the remaining
+        /// TEU capacity is reached.
+        /// </summary>
+        private List<Shipment> SelectShipmentsWithinCapacity(
+            List<Shipment> candidateShipments,
+            int remainingCapacity)
+        {
+            var selectedShipments = new List<Shipment>();
+            int selectedTeu = 0;
+
+            foreach (var shipment in candidateShipments)
+            {
+                if (shipment.TeuSize <= 0)
+                {
+                    throw new InvalidOperationException(
+                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptStart | " +
+                        $"Shipment {shipment.Index} has non-positive TEU size: " +
+                        $"{shipment.TeuSize}.");
+                }
+
+                if (selectedTeu + shipment.TeuSize > remainingCapacity)
+                    continue;
+
+                selectedShipments.Add(shipment);
+                selectedTeu += shipment.TeuSize;
+            }
+
+            return selectedShipments;
         }
 
         /// <summary>
@@ -244,7 +299,7 @@ namespace SimulationChallenge2026
                 Q_FinishSignals.Remove(berth);
 
                 // Remove all shipments to be discharged at the current port
-                var dischargingShipments = vessel.GetDischargingShipmentsAtCurrentPort();
+                var dischargingShipments = vessel.GetDischargingShipmentsAtCurrentSegment();
                 foreach (var shipment in dischargingShipments)
                 {
                     vessel.CarriedShipments.Remove(shipment);

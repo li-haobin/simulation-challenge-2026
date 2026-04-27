@@ -18,57 +18,71 @@ namespace SimulationChallenge2026
             $"Vessel-{Index} [{VesselClass.Name}]";
 
         /// <summary>
-        /// Retrieves the set of carried shipments whose current booking matches
-        /// the vessel's current port under the specified port selector.
+        /// Retrieves carried shipments whose current booking belongs to the vessel's
+        /// assigned service route and matches the specified partial service route.
         /// </summary>
-        /// <param name="portSelector">
-        /// A selector that chooses which port of the current booking to compare
-        /// against the vessel's current berth port, e.g. departure port or arrival port.
-        /// </param>
-        /// <returns>
-        /// A set of matching shipments at the vessel's current port.
-        /// </returns>
-        /// <exception cref="InvalidOperationException">
-        /// Thrown if:
-        /// - the vessel has no current berth,
-        /// - the berth has no associated port,
-        /// - or the vessel has no carried shipments.
-        /// </exception>
-        private HashSet<Shipment> GetShipmentsAtCurrentPort(Func<Booking, Port> portSelector)
+        private HashSet<Shipment> GetShipmentsAtSegment(
+            PartialServiceRoute partialServiceRoute,
+            Func<Booking, int> segmentIndexSelector)
         {
-            if (CurrentBerth == null)
-                throw new InvalidOperationException(
-                    $"Vessel {Index} has no current berth.");
-
-            var port = CurrentBerth.Port
+            var assignedServiceRoute = AssignedServiceRoute
                 ?? throw new InvalidOperationException(
-                    $"Vessel {Index} berth has no port.");
+                    $"Vessel {Index} has no assigned service route.");
+
+            if (partialServiceRoute == null)
+                throw new ArgumentNullException(nameof(partialServiceRoute));
 
             if (CarriedShipments == null)
                 throw new InvalidOperationException(
                     $"Vessel {Index} has no carried shipments.");
 
             return CarriedShipments
-                .Where(shipment => portSelector(shipment.GetCurrentBooking()) == port)
+                .Where(shipment =>
+                {
+                    var booking = shipment.GetCurrentBooking();
+
+                    return booking.ServiceRoute == assignedServiceRoute
+                        && segmentIndexSelector(booking) == partialServiceRoute.SequenceIndex;
+                })
                 .ToHashSet();
         }
 
         /// <summary>
-        /// Retrieves the set of shipments that the vessel is expected to load
-        /// at its current berth's port.
+        /// Retrieves shipments that should be loaded for the vessel's next partial service route.
+        /// 
+        /// Loading uses the next segment because the vessel is being served before
+        /// sailing to the next partial service route.
         /// </summary>
-        public HashSet<Shipment> GetLoadingShipmentsAtCurrentPort()
+        public HashSet<Shipment> GetLoadingShipmentsAtNextSegment()
         {
-            return GetShipmentsAtCurrentPort(booking => booking.DeparturePort);
+            var nextPartialServiceRoute = GetNextPartialServiceRoute();
+
+            return GetShipmentsAtSegment(
+                nextPartialServiceRoute,
+                booking => booking.DepartureSegmentIndex);
         }
 
         /// <summary>
-        /// Retrieves the set of shipments that the vessel is expected to discharge
-        /// at its current berth's port.
+        /// Retrieves shipments that should be discharged at the vessel's current partial service route.
+        /// 
+        /// Discharging uses the current segment because the vessel has arrived at
+        /// the current partial service route.
+        /// 
+        /// If CurrentPartialServiceRoute is null, the vessel has not yet entered
+        /// any partial service route, so there are no shipments to discharge.
         /// </summary>
-        public HashSet<Shipment> GetDischargingShipmentsAtCurrentPort()
+        public HashSet<Shipment> GetDischargingShipmentsAtCurrentSegment()
         {
-            return GetShipmentsAtCurrentPort(booking => booking.ArrivalPort);
+            var currentPartialServiceRoute = CurrentPartialServiceRoute;
+
+            if (currentPartialServiceRoute == null)
+            {
+                return new HashSet<Shipment>();
+            }
+
+            return GetShipmentsAtSegment(
+                currentPartialServiceRoute,
+                booking => booking.ArrivalSegmentIndex);
         }
 
         /// <summary>

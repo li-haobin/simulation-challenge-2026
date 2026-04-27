@@ -101,15 +101,13 @@ namespace SimulationChallenge2026
                     SequenceIndex = i + 1,
                     Shipment = shipment,
                     ServiceRoute = edge.ServiceRoute,
-                    DeparturePort = edge.DeparturePort,
-                    ArrivalPort = edge.ArrivalPort
+                    DepartureSegmentIndex = edge.DepartureSegmentIndex,
+                    ArrivalSegmentIndex = edge.ArrivalSegmentIndex
                 };
 
                 shipment.AssociatedBookings.Add(booking);
                 edge.ServiceRoute.AssociatedBookings.Add(booking);
 
-                booking.DeparturePort.OutgoingBookings.Add(booking);
-                booking.ArrivalPort.IncomingBookings.Add(booking);
             }
 
             shipment.CurrentBookingIndex = shipment.AssociatedBookings
@@ -164,6 +162,8 @@ namespace SimulationChallenge2026
                             ServiceRoute = serviceRoute,
                             DeparturePort = departurePort,
                             ArrivalPort = arrivalPort,
+                            DepartureSegmentIndex = startIndex % n + 1,
+                            ArrivalSegmentIndex = (startIndex + step - 1) % n + 1,
                             TotalDistance = cumulativeDistance
                         });
                     }
@@ -256,6 +256,8 @@ namespace SimulationChallenge2026
             public ServiceRoute ServiceRoute { get; set; } = null!;
             public Port DeparturePort { get; set; } = null!;
             public Port ArrivalPort { get; set; } = null!;
+            public int DepartureSegmentIndex { get; set; } 
+            public int ArrivalSegmentIndex { get; set; }
             public double TotalDistance { get; set; }
         }
     }

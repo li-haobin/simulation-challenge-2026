@@ -59,10 +59,10 @@ namespace SimulationChallenge2026
 
             // Compute workload at the current port:
             // total TEU to discharge + total TEU to load
-            int dischargingTeu = vessel.GetDischargingShipmentsAtCurrentPort()
+            int dischargingTeu = vessel.GetDischargingShipmentsAtCurrentSegment()
                 .Sum(shipment => shipment.TeuSize);
 
-            int loadingTeu = vessel.GetLoadingShipmentsAtCurrentPort()
+            int loadingTeu = vessel.GetLoadingShipmentsAtNextSegment()
                 .Sum(shipment => shipment.TeuSize);
 
             int totalTeuToHandle = dischargingTeu + loadingTeu;

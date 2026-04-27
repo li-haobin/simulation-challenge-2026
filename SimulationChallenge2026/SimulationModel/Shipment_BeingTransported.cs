@@ -85,7 +85,7 @@ namespace SimulationChallenge2026
 
             foreach (var vessel in P_StartSignals.ToList())
             {
-                var loadingShipments = vessel.GetLoadingShipmentsAtCurrentPort();
+                var loadingShipments = vessel.GetLoadingShipmentsAtNextSegment();
 
                 foreach (var shipment in loadingShipments)
                 {
@@ -103,7 +103,6 @@ namespace SimulationChallenge2026
                             $"Shipment {shipment.Index} is loaded onto vessel {vessel.Index} " +
                             $"without requesting start.");
                     }
-                    if (shipment.Index == 3107) ;
                     shipment.CarryingVessel = vessel;
                     Start(shipment);
                 }
@@ -126,21 +125,6 @@ namespace SimulationChallenge2026
 
             foreach (var vessel in Q_FinishSignals.ToList())
             {
-                var currentPartialServiceRoute = vessel.CurrentPartialServiceRoute
-                    ?? throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
-                        $"Vessel {vessel.Index} has null CurrentPartialServiceRoute.");
-
-                var currentLeg = currentPartialServiceRoute.AssociatedLeg
-                    ?? throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
-                        $"Vessel {vessel.Index} current partial service route has null AssociatedLeg.");
-
-                var currentLegDeparturePort = currentLeg.DeparturePort
-                    ?? throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
-                        $"Vessel {vessel.Index} current leg has null DeparturePort.");
-
                 var shipmentsToFinish = D_LoadsReadyFinish
                     .Where(shipment =>
                         shipment.CarryingVessel == vessel &&
@@ -149,17 +133,6 @@ namespace SimulationChallenge2026
 
                 foreach (var shipment in shipmentsToFinish)
                 {
-                    var currentBooking = shipment.GetCurrentBooking();
-
-                    if (currentBooking.ArrivalPort != currentLegDeparturePort)
-                    {
-                        throw new InvalidOperationException(
-                            $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
-                            $"Shipment {shipment.Index} current booking arrival port " +
-                            $"{currentBooking.ArrivalPort.Name} does not match vessel {vessel.Index} " +
-                            $"current leg departure port {currentLegDeparturePort.Name}.");
-                    }
-                    if (shipment.Index == 3107) ;
                     shipment.CarryingVessel = null;
                     Finish(shipment);
                 }
