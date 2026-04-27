@@ -78,21 +78,44 @@ namespace SimulationChallenge2026
             // --- Shipment flow ---
             Shipment_Generator.ConnectTo(Shipment_WaitingForLoadingAtOriginPort);
             Shipment_WaitingForLoadingAtOriginPort.ConnectTo(Shipment_BeingTransported);
-            Shipment_BeingTransported.ConnectTo(Shipment_WaitingForLoadingAtTransshipmentPort, shipment => true);
+            Shipment_BeingTransported.ConnectTo(Shipment_WaitingForLoadingAtTransshipmentPort, shipment => !shipment.IsAtLastBooking());
+            Shipment_BeingTransported.Terminate(shipment => shipment.IsAtLastBooking());
+            Shipment_BeingTransported.ConnectTo(Shipment_WaitingForLoadingAtTransshipmentPort);
+            Shipment_WaitingForLoadingAtTransshipmentPort.ConnectTo(Shipment_BeingTransported);
 
             // --- Vessel flow ---
             Vessel_Generator.ConnectTo(Vessel_AwaitingInstructions);
+            Vessel_AwaitingInstructions.ConnectTo(Vessel_Sailing);
+            Vessel_Sailing.ConnectTo(Vessel_QueuingForBerth);
+            Vessel_QueuingForBerth.ConnectTo(Vessel_BeingServed);
+            Vessel_BeingServed.ConnectTo(Vessel_Sailing, vessel => true);
+            //Vessel_BeingServed.ConnectTo(Vessel_AwaitingInstructions, vessel => true);
 
             // --- Berth flow ---
             Berth_Generator.ConnectTo(Berth_Idle);
+            Berth_Idle.ConnectTo(Berth_Berthing);
+            Berth_Berthing.ConnectTo(Berth_HandlingCargo);
+            Berth_HandlingCargo.ConnectTo(Berth_Idle);
 
-            //// --- Vessel → Sailing (next step placeholder) ---
-            //// Vessel_AwaitingInstructions.OnFinish.Add(...)
+            // =========================================================
+            // 🔔 Signal Wiring (Cross-Flow Coordination)
+            // =========================================================
 
-            //// --- Berth lifecycle ---
-            //Berth_Idle.OnFinish.Add(Berth_Berthing.RequestStart);
-            //Berth_Berthing.OnFinish.Add(Berth_HandlingCargo.RequestStart);
-            //Berth_HandlingCargo.OnFinish.Add(Berth_Idle.RequestStart);
+            // Shipment readiness at port enables vessel service
+            Shipment_WaitingForLoadingAtOriginPort.OnFinish.Add(Vessel_BeingServed.SignalStart);
+            Shipment_WaitingForLoadingAtTransshipmentPort.OnFinish.Add(Vessel_BeingServed.SignalStart);
+
+            // Vessel service drives shipment transport state transition
+            Vessel_BeingServed.OnStart.Add(Shipment_BeingTransported.SignalStart);
+            Vessel_BeingServed.OnStart.Add(Shipment_BeingTransported.SignalFinish);
+
+            // Vessel queueing and berth assignment coordination
+            Vessel_QueuingForBerth.OnStart.Add(Berth_Idle.SignalFinish);
+            Berth_Berthing.OnStart.Add(Vessel_QueuingForBerth.SignalFinish);
+
+            // Vessel service and berth cargo handling coordination
+            Vessel_BeingServed.OnStart.Add(Berth_HandlingCargo.SignalStart);
+            Berth_HandlingCargo.OnFinish.Add(Vessel_BeingServed.SignalFinish);
 
         }
     }

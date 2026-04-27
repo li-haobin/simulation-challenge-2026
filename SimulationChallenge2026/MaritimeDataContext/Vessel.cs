@@ -120,6 +120,6 @@ namespace SimulationChallenge2026
 
             // Wrap around if current route is already the last one
             return nextPartialServiceRoute ?? firstPartialServiceRoute;
-        }
+        }        
     }
 }

@@ -3,6 +3,7 @@ using O2DESNet.Standard;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace SimulationChallenge2026
 {
@@ -246,6 +247,40 @@ namespace SimulationChallenge2026
                 // Once the next activity has started the entity,
                 // the entity is considered to have departed from this activity.
                 this.Depart(load);
+            });
+        }
+
+        /// <summary>
+        /// Terminate loads at this activity after they finish.
+        ///
+        /// Flow semantics:
+        /// 1. When a load FINISHES this activity,
+        ///    it is checked against the optional filter.
+        /// 2. If the filter is satisfied (or no filter is provided),
+        ///    the load immediately DEPARTS from this activity.
+        ///
+        /// This is useful for terminal nodes or end-of-flow conditions,
+        /// where finished loads should leave the model directly instead of
+        /// being forwarded to another downstream activity.
+        ///
+        /// Optional:
+        /// - filter:
+        ///   Controls which finished loads should terminate here.
+        ///   This is useful for conditional termination logic,
+        ///   such as destination-based, type-based, or status-based exit rules.
+        /// </summary>
+        public void Terminate(Func<TLoad, bool>? filter = null)
+        {
+            this.OnFinish.Add(load =>
+            {
+                // Terminate the finished load only if it satisfies
+                // the optional filter condition.
+                if (filter == null || filter(load))
+                {
+                    // Remove the load from the current activity,
+                    // so that it exits the process flow here.
+                    this.Depart(load);
+                }
             });
         }
     }

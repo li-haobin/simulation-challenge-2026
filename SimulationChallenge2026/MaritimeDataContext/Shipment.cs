@@ -79,5 +79,29 @@ namespace SimulationChallenge2026
 
             return booking;
         }
+
+        /// <summary>
+        /// Determines whether the current booking is the last booking
+        /// in the shipment's booking sequence.
+        ///
+        /// The current booking is identified by CurrentBookingIndex.
+        /// The last booking is the one with the largest SequenceIndex
+        /// among AssociatedBookings.
+        /// </summary>
+        /// <returns>
+        /// True if the current booking is the last one; otherwise false.
+        /// </returns>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown if:
+        /// - the shipment has no associated bookings,
+        /// - or no booking matches the CurrentBookingIndex.
+        /// </exception>
+        public bool IsAtLastBooking()
+        {
+            var currentBooking = GetCurrentBooking();
+            var lastSequenceIndex = AssociatedBookings.Max(b => b.SequenceIndex);
+
+            return currentBooking.SequenceIndex == lastSequenceIndex;
+        }
     }
 }
