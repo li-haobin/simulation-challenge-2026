@@ -1,4 +1,5 @@
-﻿using System;
+﻿using O2DESNet;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -312,5 +313,102 @@ namespace SimulationChallenge2026
             /// </summary>
             public double TotalDistance { get; set; }
         }
+
+        #region Statistics - TEU by Demand and Origin Port
+
+        /// <summary>
+        /// Time-weighted TEU counters grouped by demand OD pair.
+        ///
+        /// Each counter tracks the total TEU volume of shipments currently staying
+        /// in this activity for the corresponding demand.
+        ///
+        /// The counter increases when a shipment starts this activity and decreases
+        /// when the shipment departs from this activity.
+        /// </summary>
+        public Dictionary<Demand, HourCounter> HC_TeusByDemand { get; } = new();
+
+        /// <summary>
+        /// Time-weighted TEU counters grouped by demand origin port.
+        ///
+        /// Each counter tracks the total TEU volume of shipments currently staying
+        /// in this activity for shipments whose demand starts from the corresponding
+        /// origin port.
+        ///
+        /// The counter increases when a shipment starts this activity and decreases
+        /// when the shipment departs from this activity.
+        /// </summary>
+        public Dictionary<Port, HourCounter> HC_TeusByOriginPort { get; } = new();
+
+        protected override void Start(Shipment shipment)
+        {
+            base.Start(shipment);
+
+            // Statistics: increase TEU volume for this demand when the shipment enters this activity.
+            var demand = RequireNotNull(
+                shipment.Demand,
+                nameof(Start),
+                $"Demand of Shipment {shipment.Index}");
+
+            if (!HC_TeusByDemand.TryGetValue(demand, out var demandCounter))
+            {
+                demandCounter = AddHourCounter();
+                HC_TeusByDemand[demand] = demandCounter;
+            }
+
+            demandCounter.ObserveChange(shipment.TeuSize);
+
+            // Statistics: increase TEU volume for this demand origin port.
+            var originPort = RequireNotNull(
+                demand.OriginPort,
+                nameof(Start),
+                $"Origin port of Demand {demand}");
+
+            if (!HC_TeusByOriginPort.TryGetValue(originPort, out var originPortCounter))
+            {
+                originPortCounter = AddHourCounter();
+                HC_TeusByOriginPort[originPort] = originPortCounter;
+            }
+
+            originPortCounter.ObserveChange(shipment.TeuSize);
+        }
+
+        public override void Depart(Shipment shipment)
+        {
+            base.Depart(shipment);
+
+            // Statistics: decrease TEU volume for this demand when the shipment leaves this activity.
+            var demand = RequireNotNull(
+                shipment.Demand,
+                nameof(Depart),
+                $"Demand of Shipment {shipment.Index}");
+
+            if (!HC_TeusByDemand.TryGetValue(demand, out var demandCounter))
+            {
+                ThrowActivityException(
+                    nameof(Depart),
+                    $"Cannot update TEU statistics for Shipment {shipment.Index} because no HourCounter exists for Demand {demand}. " +
+                    "This indicates that the shipment may not have started this activity before departure.");
+            }
+
+            demandCounter.ObserveChange(-shipment.TeuSize);
+
+            // Statistics: decrease TEU volume for this demand origin port.
+            var originPort = RequireNotNull(
+                demand.OriginPort,
+                nameof(Depart),
+                $"Origin port of Demand {demand}");
+
+            if (!HC_TeusByOriginPort.TryGetValue(originPort, out var originPortCounter))
+            {
+                ThrowActivityException(
+                    nameof(Depart),
+                    $"Cannot update TEU statistics for Shipment {shipment.Index} because no HourCounter exists for origin port {originPort}. " +
+                    "This indicates that the shipment may not have started this activity before departure.");
+            }
+
+            originPortCounter.ObserveChange(-shipment.TeuSize);
+        }
+
+        #endregion
     }
 }

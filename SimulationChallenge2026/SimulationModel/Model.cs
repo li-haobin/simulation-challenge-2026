@@ -42,13 +42,13 @@ namespace SimulationChallenge2026
 
             // --- Activities ---
             Shipment_WaitingForLoadingAtOriginPort = AddChild(
-                new Shipment_WaitingForLoadingAtOriginPort(DataContext, seed: DefaultRS.Next()) { EnableLog = true });
+                new Shipment_WaitingForLoadingAtOriginPort(DataContext, seed: DefaultRS.Next()) { EnableLog = false });
 
             Shipment_WaitingForLoadingAtTransshipmentPort = AddChild(
-                new Shipment_WaitingForLoadingAtTransshipmentPort(seed: DefaultRS.Next()) { EnableLog = true });
+                new Shipment_WaitingForLoadingAtTransshipmentPort(seed: DefaultRS.Next()) { EnableLog = false });
 
             Shipment_BeingTransported = AddChild(
-                new Shipment_BeingTransported(seed: DefaultRS.Next()) { EnableLog = true });
+                new Shipment_BeingTransported(seed: DefaultRS.Next()) { EnableLog = false });
 
             Vessel_AwaitingInstructions = AddChild(
                 new Vessel_AwaitingInstructions(seed: DefaultRS.Next()) { EnableLog = false });
@@ -60,7 +60,7 @@ namespace SimulationChallenge2026
                 new Vessel_QueuingForBerth(seed: DefaultRS.Next()) { EnableLog = false });
 
             Vessel_BeingServed = AddChild(
-                new Vessel_BeingServed(seed: DefaultRS.Next()) { EnableLog = true });
+                new Vessel_BeingServed(seed: DefaultRS.Next()) { EnableLog = false });
 
             Berth_Idle = AddChild(
                 new Berth_Idle(seed: DefaultRS.Next()) { EnableLog = false });
