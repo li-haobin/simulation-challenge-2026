@@ -1,5 +1,6 @@
 ﻿using SimulationChallenge2026;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 var context = MaritimeDataInitializer.Create();
@@ -13,12 +14,14 @@ for (var day = updateIntervalDays; day <= totalDays; day += updateIntervalDays)
 {
     sim.Run(TimeSpan.FromDays(updateIntervalDays));
 
-    Console.Clear();
+    ClearConsoleScreen();
 
     Console.WriteLine($"Simulation Progress: Day {day:N0} / {totalDays:N0}");
     Console.WriteLine($"Simulation Clock Time: {sim.ClockTime:yyyy-MM-dd HH:mm:ss}");
 
     PrintShipmentWaitingForLoadingAtOriginPortStatistics(sim);
+
+    PrintShipmentBeingTransportedStatistics(sim);
 
     Console.WriteLine();
 }
@@ -28,6 +31,16 @@ Console.WriteLine();
 
 
 #region Statistics Output
+
+static void ClearConsoleScreen()
+{
+    if (Console.IsOutputRedirected)
+        return;
+
+    // Clear screen + clear scrollback + move cursor to top-left.
+    Console.Write("\u001b[2J\u001b[3J\u001b[H");
+    Console.Out.Flush();
+}
 
 static void PrintShipmentWaitingForLoadingAtOriginPortStatistics(Model sim)
 {
@@ -47,6 +60,25 @@ static void PrintShipmentWaitingForLoadingAtOriginPortStatistics(Model sim)
 
     // Extend the port-level table with transshipment waiting TEU.
     PrintTeusByPortTable(originActivity, transshipmentActivity);
+
+    Console.WriteLine();
+}
+
+static void PrintShipmentBeingTransportedStatistics(Model sim)
+{
+    if (sim == null)
+        throw new ArgumentNullException(nameof(sim));
+
+    var activity = sim.Shipment_BeingTransported;
+
+    Console.WriteLine();
+    Console.WriteLine("============================================================");
+    Console.WriteLine("Shipment Being Transported Statistics");
+    Console.WriteLine("============================================================");
+
+    PrintAverageTeusInTransitionByDemandMatrix(activity);
+
+    PrintCompletedTeusByDemandMatrix(activity);
 
     Console.WriteLine();
 }
@@ -172,6 +204,96 @@ static void PrintTeusByPortTable(
         $"{totalOriginAverageTeu + totalTransshipmentAverageTeu,20:N0}");
 
     Console.WriteLine();
+}
+
+static void PrintAverageTeusInTransitionByDemandMatrix(
+    Shipment_BeingTransported activity)
+{
+    Console.WriteLine();
+    Console.WriteLine("Average TEUs in Transition by Demand Matrix");
+    Console.WriteLine("------------------------------------------------------------");
+
+    PrintDemandMatrix(
+        activity.HC_TeusInTransitionByDemand,
+        counter => counter.AverageCount,
+        "N0");
+}
+
+static void PrintCompletedTeusByDemandMatrix(
+    Shipment_BeingTransported activity)
+{
+    Console.WriteLine();
+    Console.WriteLine("Completed TEUs by Demand Matrix");
+    Console.WriteLine("------------------------------------------------------------");
+
+    PrintDemandMatrix(
+        activity.HC_TeusInTransitionByDemand,
+        counter => counter.TotalDecrement,
+        "N0");
+}
+
+static void PrintDemandMatrix(
+    Dictionary<Demand, O2DESNet.HourCounter> counters,
+    Func<O2DESNet.HourCounter, double> valueSelector,
+    string numberFormat)
+{
+    var origins = counters.Keys
+        .Select(demand => demand.OriginPort)
+        .Distinct()
+        .OrderBy(port => port.Name)
+        .ToList();
+
+    var destinations = counters.Keys
+        .Select(demand => demand.DestinationPort)
+        .Distinct()
+        .OrderBy(port => port.Name)
+        .ToList();
+
+    const int firstColumnWidth = 18;
+    const int cellWidth = 14;
+
+    Console.Write($"{"Origin \\ Destination",-firstColumnWidth}");
+
+    foreach (var destination in destinations)
+    {
+        Console.Write($"{destination.Name,cellWidth}");
+    }
+
+    Console.WriteLine();
+
+    Console.Write($"{new string('-', firstColumnWidth),-firstColumnWidth}");
+
+    foreach (var _ in destinations)
+    {
+        Console.Write($"{new string('-', cellWidth),cellWidth}");
+    }
+
+    Console.WriteLine();
+
+    foreach (var origin in origins)
+    {
+        Console.Write($"{origin.Name,-firstColumnWidth}");
+
+        foreach (var destination in destinations)
+        {
+            var item = counters
+                .FirstOrDefault(pair =>
+                    pair.Key.OriginPort == origin &&
+                    pair.Key.DestinationPort == destination);
+
+            if (item.Key == null)
+            {
+                Console.Write($"{"-",cellWidth}");
+            }
+            else
+            {
+                double value = valueSelector(item.Value);
+                Console.Write($"{value.ToString(numberFormat),cellWidth}");
+            }
+        }
+
+        Console.WriteLine();
+    }
 }
 
 static double GetAverageCount(

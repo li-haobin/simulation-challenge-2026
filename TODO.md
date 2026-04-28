@@ -2,27 +2,6 @@
 
 ## Statistics and Scenario Settings
 
-### Shipment-Level Statistics
-
-- Collect activity-based time statistics for each shipment, including:
-  - waiting time before the first transportation starts;
-  - sailing / in-transit time on vessels;
-  - waiting time during transshipment at intermediate ports.
-
-- Aggregate shipment statistics by demand OD pair, including:
-  - average and distribution of total delivery time;
-  - average waiting time before first loading;
-  - average in-transit time;
-  - average transshipment waiting time;
-  - number and percentage of delayed shipments.
-
-- Track shipment status and completion outcomes, including:
-  - completed shipments;
-  - shipments still waiting at origin ports;
-  - shipments waiting for transshipment;
-  - shipments currently carried by vessels;
-  - unmet or undelivered demand at the end of simulation.
-
 ### Vessel-Level Statistics
 
 - Collect time statistics for each vessel, including:

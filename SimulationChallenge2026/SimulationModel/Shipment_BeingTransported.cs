@@ -1,4 +1,5 @@
-﻿using System;
+﻿using O2DESNet;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -144,5 +145,69 @@ namespace SimulationChallenge2026
                 Q_FinishSignals.Remove(vessel);
             }
         }
+
+        #region Statistics - TEU in Transition by Demand
+
+        /// <summary>
+        /// Time-weighted TEU counters grouped by demand.
+        ///
+        /// Each counter tracks the total TEU volume of shipments currently in transition
+        /// for the corresponding origin-destination demand.
+        ///
+        /// A shipment is considered in transition from the moment it starts transportation
+        /// on its first booking until it departs transportation after its last booking.
+        /// </summary>
+        public Dictionary<Demand, HourCounter> HC_TeusInTransitionByDemand { get; } = new();
+
+        protected override void Start(Shipment shipment)
+        {
+            base.Start(shipment);
+
+            if (shipment.CurrentBookingIndex != 1)
+                return;
+
+            var demand = RequireNotNull(
+                shipment.Demand,
+                nameof(Start),
+                $"Shipment {shipment.Index} demand");
+
+            if (!HC_TeusInTransitionByDemand.TryGetValue(demand, out var demandCounter))
+            {
+                demandCounter = AddHourCounter();
+                HC_TeusInTransitionByDemand[demand] = demandCounter;
+            }
+
+            demandCounter.ObserveChange(shipment.TeuSize);
+        }
+
+        public override void Depart(Shipment shipment)
+        {
+            if (!F_LoadsFinished.Contains(shipment))
+                return;
+
+            bool isLastBooking = shipment.IsAtLastBooking();
+
+            base.Depart(shipment);
+
+            if (!isLastBooking)
+                return;
+
+            var demand = RequireNotNull(
+                shipment.Demand,
+                nameof(Depart),
+                $"Shipment {shipment.Index} demand");
+
+            if (!HC_TeusInTransitionByDemand.TryGetValue(demand, out var demandCounter))
+            {
+                ThrowActivityException(
+                    nameof(Depart),
+                    $"Cannot update in-transition TEU statistics for Shipment {shipment.Index} " +
+                    $"because no HourCounter exists for its demand.");
+            }
+
+            demandCounter.ObserveChange(-shipment.TeuSize);
+        }        
+
+        #endregion
     }
 }
