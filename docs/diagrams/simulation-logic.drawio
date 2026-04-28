@@ -50,7 +50,7 @@
         <mxCell id="wpRKzy1JmQcgBiuX6Qge-14" parent="wpRKzy1JmQcgBiuX6Qge-9" style="text;strokeColor=none;fillColor=none;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=12;whiteSpace=wrap;html=1;" value="Assigned Service Route" vertex="1">
           <mxGeometry height="30" width="180" y="146" as="geometry" />
         </mxCell>
-        <mxCell id="wpRKzy1JmQcgBiuX6Qge-15" parent="wpRKzy1JmQcgBiuX6Qge-9" style="text;strokeColor=none;fillColor=none;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=12;whiteSpace=wrap;html=1;" value="Current Partial Service Route" vertex="1">
+        <mxCell id="wpRKzy1JmQcgBiuX6Qge-15" parent="wpRKzy1JmQcgBiuX6Qge-9" style="text;strokeColor=none;fillColor=none;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=12;whiteSpace=wrap;html=1;" value="Current Segment" vertex="1">
           <mxGeometry height="30" width="180" y="176" as="geometry" />
         </mxCell>
         <mxCell id="wpRKzy1JmQcgBiuX6Qge-16" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;align=center;fontSize=14;" value="Port" vertex="1">
@@ -361,9 +361,6 @@
             <mxPoint x="620" y="580" as="sourcePoint" />
             <mxPoint x="808" y="490" as="targetPoint" />
           </mxGeometry>
-        </mxCell>
-        <mxCell id="I2z9arn-3ycHEJjuuFed-1" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=#b85450;fillColor=#f8cecc;align=center;verticalAlign=middle;rounded=0;" value="To be updated to serice segment" vertex="1">
-          <mxGeometry height="30" width="60" x="1360" y="555" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
