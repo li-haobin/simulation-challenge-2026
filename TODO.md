@@ -4,12 +4,6 @@
 
 ### Vessel-Level Statistics
 
-- Collect time statistics for each vessel, including:
-  - sailing time;
-  - waiting time at ports or before berth service;
-  - service time, including berthing and cargo handling;
-  - idle or instruction-waiting time, if applicable.
-
 - Collect vessel loading and utilization statistics, including:
   - TEU load after each loading/discharging activity;
   - average vessel load;
