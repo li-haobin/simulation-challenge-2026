@@ -35,19 +35,6 @@ namespace SimulationChallenge2026
         /// If CurrentSegment is null, the vessel is not assigned to any sailing segment,
         /// so the duration is zero.
         /// </summary>
-        /// <param name="vessel">
-        /// The vessel whose sailing duration is being calculated.
-        /// </param>
-        /// <param name="rs">
-        /// Random stream used to apply stochastic variation to sailing time.
-        /// </param>
-        /// <returns>
-        /// Sailing duration as a TimeSpan.
-        /// </returns>
-        /// <exception cref="InvalidOperationException">
-        /// Thrown if the vessel has an invalid sailing state, such as a missing leg,
-        /// missing vessel class, or non-positive sailing speed.
-        /// </exception>
         private TimeSpan GetDuration(Vessel vessel, Random rs)
         {
             var currentSegment = vessel.CurrentSegment;
@@ -60,24 +47,22 @@ namespace SimulationChallenge2026
                 return TimeSpan.Zero;
             }
 
-            var leg = currentSegment.AssociatedLeg
-                ?? throw new InvalidOperationException(
-                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | GetDuration | " +
-                    $"Vessel {vessel.Index} current segment {currentSegment.SequenceIndex} has no associated leg.");
+            var leg = RequireNotNull(
+                currentSegment.AssociatedLeg,
+                nameof(GetDuration),
+                $"Vessel {vessel.Index} current segment {currentSegment.SequenceIndex} associated leg");
 
-            var vesselClass = vessel.VesselClass
-                ?? throw new InvalidOperationException(
-                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | GetDuration | " +
-                    $"Vessel {vessel.Index} has no vessel class.");
+            var vesselClass = RequireNotNull(
+                vessel.VesselClass,
+                nameof(GetDuration),
+                $"Vessel {vessel.Index} vessel class");
 
             double speed = vesselClass.SailingSpeed;
 
-            if (speed <= 0)
-            {
-                throw new InvalidOperationException(
-                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | GetDuration | " +
-                    $"Vessel {vessel.Index} has non-positive sailing speed: {speed}.");
-            }
+            Require(
+                speed > 0,
+                nameof(GetDuration),
+                $"Vessel {vessel.Index} has non-positive sailing speed: {speed}.");
 
             double hours = leg.SailingDistance / speed;
 

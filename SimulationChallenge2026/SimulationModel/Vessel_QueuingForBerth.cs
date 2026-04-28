@@ -32,13 +32,12 @@ namespace SimulationChallenge2026
         /// <summary>
         /// External signal indicating that a berth is ready to admit its occupying vessel.
         /// </summary>
-        /// <param name="berth">The berth issuing the finish signal.</param>
         public void SignalFinish(Berth berth)
         {
             if (berth == null)
                 throw new ArgumentNullException(nameof(berth));
 
-            Log("SignalFinish", berth);
+            Log(nameof(SignalFinish), berth);
 
             if (Q_FinishSignals.Add(berth))
             {
@@ -57,21 +56,21 @@ namespace SimulationChallenge2026
         /// </summary>
         protected override void AttemptFinish()
         {
-            Log("AttemptFinish");
+            Log(nameof(AttemptFinish));
 
             foreach (var berth in Q_FinishSignals.ToList())
             {
-                var vessel = berth.OccupyingVessel
-                    ?? throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
-                        $"Berth {berth.Index} has no occupying vessel.");
+                var vessel = RequireNotNull(
+                    berth.OccupyingVessel,
+                    nameof(AttemptFinish),
+                    $"Berth {berth.Index} occupying vessel");
 
                 if (!D_LoadsReadyFinish.Contains(vessel))
                     continue;
 
                 Q_FinishSignals.Remove(berth);
 
-                // Assign the berth to the vessel before it leaves the queue
+                // Assign the berth to the vessel before it leaves the queue.
                 vessel.CurrentBerth = berth;
 
                 Finish(vessel);

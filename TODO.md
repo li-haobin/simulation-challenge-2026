@@ -1,21 +1,5 @@
 # TODO
 
-## Comments and Exceptions
-
-- Refine code comments to align with the segment-based logic.
-- Improve exception messages for routing, booking, loading, and discharging logic.
-- Standardize timestamp format in debug logs and exception messages.
-
-## Logic and Testing
-
-- Continue debugging loading and discharging logic under repeated-port scenarios.
-- Add tests for:
-  - Initial vessels with `CurrentPartialServiceRoute == null`
-  - Loading based on next segment
-  - Discharging based on current segment
-  - Repeated ports in the same service route
-  - Capacity constraints during loading
-
 ## Statistics and Scenario Settings
 
 - Collect simulation statistics for:

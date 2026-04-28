@@ -44,7 +44,7 @@ namespace SimulationChallenge2026
         /// </summary>
         protected override void AttemptFinish()
         {
-            Log("AttemptFinish");
+            Log(nameof(AttemptFinish));
 
             foreach (var shipment in D_LoadsReadyFinish.ToList())
             {
@@ -69,31 +69,29 @@ namespace SimulationChallenge2026
             if (shipment == null)
                 throw new ArgumentNullException(nameof(shipment));
 
-            var demand = shipment.Demand
-                ?? throw new InvalidOperationException(
-                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AssignAssociatedBookings | " +
-                    $"Shipment {shipment.Index} has null Demand.");
+            var demand = RequireNotNull(
+                shipment.Demand,
+                nameof(AssignAssociatedBookings),
+                $"Shipment {shipment.Index} demand");
 
-            var originPort = demand.OriginPort
-                ?? throw new InvalidOperationException(
-                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AssignAssociatedBookings | " +
-                    $"Shipment {shipment.Index} demand has null OriginPort.");
+            var originPort = RequireNotNull(
+                demand.OriginPort,
+                nameof(AssignAssociatedBookings),
+                $"Shipment {shipment.Index} demand origin port");
 
-            var destinationPort = demand.DestinationPort
-                ?? throw new InvalidOperationException(
-                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AssignAssociatedBookings | " +
-                    $"Shipment {shipment.Index} demand has null DestinationPort.");
+            var destinationPort = RequireNotNull(
+                demand.DestinationPort,
+                nameof(AssignAssociatedBookings),
+                $"Shipment {shipment.Index} demand destination port");
 
             // Reset existing booking state in case this method is called more than once.
             shipment.AssociatedBookings.Clear();
             shipment.CurrentBookingIndex = null;
 
-            if (originPort == destinationPort)
-            {
-                throw new InvalidOperationException(
-                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AssignAssociatedBookings | " +
-                    $"Shipment {shipment.Index} has same origin and destination port.");
-            }
+            Require(
+                originPort != destinationPort,
+                nameof(AssignAssociatedBookings),
+                $"Shipment {shipment.Index} has same origin and destination port {originPort.Name}.");
 
             var candidateBookings = BuildAllCandidateBookings();
 
@@ -102,15 +100,13 @@ namespace SimulationChallenge2026
                 destinationPort,
                 candidateBookings);
 
-            if (path == null || path.Count == 0)
-            {
-                throw new InvalidOperationException(
-                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AssignAssociatedBookings | " +
-                    $"No feasible booking chain found for shipment {shipment.Index} " +
-                    $"from {originPort.Name} to {destinationPort.Name}.");
-            }
+            Require(
+                path != null && path.Count > 0,
+                nameof(AssignAssociatedBookings),
+                $"No feasible booking chain found for shipment {shipment.Index} " +
+                $"from {originPort.Name} to {destinationPort.Name}.");
 
-            for (int i = 0; i < path.Count; i++)
+            for (int i = 0; i < path!.Count; i++)
             {
                 var edge = path[i];
 

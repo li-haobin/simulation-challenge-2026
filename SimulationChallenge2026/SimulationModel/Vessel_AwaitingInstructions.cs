@@ -7,13 +7,11 @@ namespace SimulationChallenge2026
     /// <summary>
     /// Represents vessels awaiting departure instructions on their assigned service routes.
     ///
-    /// This activity controls when vessels are released (i.e., allowed to proceed)
-    /// based on a predefined service schedule.
+    /// This activity controls when vessels are released based on a predefined service schedule.
     ///
     /// Key design:
-    /// - This activity does NOT modify vessel location or route state.
-    /// - Vessels are assumed to have already been initialized at the first port
-    ///   with a valid CurrentPartialServiceRoute.
+    /// - This activity does not modify vessel location or route state.
+    /// - It only controls the timing of vessel release.
     ///
     /// Mechanism:
     /// - Each service route maintains a release schedule.
@@ -21,7 +19,7 @@ namespace SimulationChallenge2026
     /// - Subsequent vessels are released periodically using a fixed headway.
     ///
     /// Synchronization:
-    /// - Finish is controlled via route-based finish signals (Q_FinishSignals).
+    /// - Finish is controlled via route-based finish signals.
     /// - Each signal allows exactly one vessel to be released.
     /// </summary>
     public class Vessel_AwaitingInstructions : ActivityHandler<Vessel>
@@ -55,33 +53,32 @@ namespace SimulationChallenge2026
         ///
         /// Logic:
         /// 1. For each vessel ready to finish:
-        ///    - If this is the first vessel of its route:
-        ///      schedule the first release using StartDayOfWeek.
-        ///    - Otherwise:
-        ///      release only if a finish signal token exists for that route.
+        ///    - If this is the first vessel of its route, schedule the first release
+        ///      using StartDayOfWeek.
+        ///    - Otherwise, release only if a finish signal token exists for that route.
         ///
         /// 2. Upon release:
-        ///    - DO NOT modify CurrentPartialServiceRoute
-        ///    - DO NOT assign vessel to route segments
-        ///    - Simply call Finish(vessel)
+        ///    - Do not modify CurrentSegment.
+        ///    - Do not assign the vessel to route segments.
+        ///    - Simply call Finish(vessel).
         ///
         /// 3. After releasing a vessel:
-        ///    - Schedule the next release using fixed headway.
+        ///    - Schedule the next release using the fixed headway.
         ///
         /// This activity only controls timing, not spatial or route state.
         /// </summary>
         protected override void AttemptFinish()
         {
-            Log("AttemptFinish");
+            Log(nameof(AttemptFinish));
 
             foreach (var vessel in D_LoadsReadyFinish.ToList())
             {
-                var route = vessel.AssignedServiceRoute
-                    ?? throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
-                        $"Vessel {vessel.Index} has no assigned service route.");
+                var route = RequireNotNull(
+                    vessel.AssignedServiceRoute,
+                    nameof(AttemptFinish),
+                    $"Vessel {vessel.Index} assigned service route");
 
-                // First vessel of this route: schedule initial release
+                // First vessel of this route: schedule initial release.
                 if (!_initializedRoutes.Contains(route))
                 {
                     _initializedRoutes.Add(route);
@@ -93,7 +90,7 @@ namespace SimulationChallenge2026
                     continue;
                 }
 
-                // Subsequent vessels: require finish signal token
+                // Subsequent vessels: require one finish signal token.
                 if (Q_FinishSignals.Contains(route))
                 {
                     Q_FinishSignals.Remove(route);
@@ -105,7 +102,7 @@ namespace SimulationChallenge2026
 
                     Finish(vessel);
 
-                    // Schedule next release for this route
+                    // Schedule next release for this route.
                     Schedule(() => SignalFinish(route), _headway);
                 }
             }
@@ -115,7 +112,7 @@ namespace SimulationChallenge2026
         /// Computes delay until the next occurrence of route.StartDayOfWeek.
         ///
         /// Convention:
-        /// - StartDayOfWeek is expressed in [0,7), where 0 = Monday 00:00.
+        /// - StartDayOfWeek is expressed in [0, 7), where 0 = Monday 00:00.
         /// </summary>
         private TimeSpan ComputeInitialDelay(ServiceRoute route)
         {
@@ -143,7 +140,7 @@ namespace SimulationChallenge2026
         /// </summary>
         private void SignalFinish(ServiceRoute route)
         {
-            Log("SignalFinish", route);
+            Log(nameof(SignalFinish), route);
 
             if (Q_FinishSignals.Add(route))
             {

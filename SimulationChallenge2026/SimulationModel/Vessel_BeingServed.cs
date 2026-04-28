@@ -67,14 +67,12 @@ namespace SimulationChallenge2026
             if (shipment == null)
                 throw new ArgumentNullException(nameof(shipment));
 
-            Log("SignalStart", shipment);
+            Log(nameof(SignalStart), shipment);
 
-            if (shipment.CarryingVessel != null)
-            {
-                throw new InvalidOperationException(
-                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | SignalStart | " +
-                    $"Shipment {shipment.Index} already has carrying vessel {shipment.CarryingVessel.Index}.");
-            }
+            Require(
+                shipment.CarryingVessel == null,
+                nameof(SignalStart),
+                $"Shipment {shipment.Index} already has carrying vessel {shipment.CarryingVessel?.Index}.");
 
             if (P_StartSignals.Add(shipment))
             {
@@ -92,7 +90,7 @@ namespace SimulationChallenge2026
             if (berth == null)
                 throw new ArgumentNullException(nameof(berth));
 
-            Log("SignalFinish", berth);
+            Log(nameof(SignalFinish), berth);
 
             if (Q_FinishSignals.Add(berth))
             {
@@ -115,25 +113,21 @@ namespace SimulationChallenge2026
         /// </summary>
         protected override void AttemptStart()
         {
-            Log("AttemptStart");
+            Log(nameof(AttemptStart));
 
             foreach (var vessel in R_LoadsRequestedStart.ToList())
             {
-                var assignedServiceRoute = vessel.AssignedServiceRoute
-                    ?? throw new InvalidOperationException(
-                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptStart | " +
-                        $"Vessel {vessel.Index} has no assigned service route.");
+                var assignedServiceRoute = RequireNotNull(
+                    vessel.AssignedServiceRoute,
+                    nameof(AttemptStart),
+                    $"Vessel {vessel.Index} assigned service route");
 
-                var vesselClass = vessel.VesselClass
-                    ?? throw new InvalidOperationException(
-                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptStart | " +
-                        $"Vessel {vessel.Index} has no vessel class.");
+                var vesselClass = RequireNotNull(
+                    vessel.VesselClass,
+                    nameof(AttemptStart),
+                    $"Vessel {vessel.Index} vessel class");
 
                 var currentSegment = vessel.CurrentSegment;
-
-                // Loading is based on the next segment.
-                // If CurrentSegment is null, GetNextSegment() returns the first segment
-                // of the assigned service route.
                 var nextSegment = vessel.GetNextSegment();
 
                 int? currentSequenceIndex = currentSegment?.SequenceIndex;
@@ -150,13 +144,11 @@ namespace SimulationChallenge2026
 
                 int remainingCapacity = vesselClass.TeuCapacity - occupiedTeu;
 
-                if (remainingCapacity < 0)
-                {
-                    throw new InvalidOperationException(
-                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptStart | " +
-                        $"Vessel {vessel.Index} exceeds TEU capacity before loading. " +
-                        $"Occupied TEU: {occupiedTeu}, capacity: {vesselClass.TeuCapacity}.");
-                }
+                Require(
+                    remainingCapacity >= 0,
+                    nameof(AttemptStart),
+                    $"Vessel {vessel.Index} exceeds TEU capacity before loading. " +
+                    $"Occupied TEU: {occupiedTeu}, capacity: {vesselClass.TeuCapacity}.");
 
                 var selectedShipments = SelectShipmentsWithinCapacity(
                     candidateShipments,
@@ -192,13 +184,10 @@ namespace SimulationChallenge2026
             return P_StartSignals
                 .Where(shipment =>
                 {
-                    if (shipment.CarryingVessel != null)
-                    {
-                        throw new InvalidOperationException(
-                            $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptStart | " +
-                            $"Shipment {shipment.Index} already assigned to vessel " +
-                            $"{shipment.CarryingVessel.Index}.");
-                    }
+                    Require(
+                        shipment.CarryingVessel == null,
+                        nameof(AttemptStart),
+                        $"Shipment {shipment.Index} already assigned to vessel {shipment.CarryingVessel?.Index}.");
 
                     var booking = shipment.GetCurrentBooking();
 
@@ -229,14 +218,12 @@ namespace SimulationChallenge2026
                 {
                     var booking = shipment.GetCurrentBooking();
 
-                    if (booking.ServiceRoute != assignedServiceRoute)
-                    {
-                        throw new InvalidOperationException(
-                            $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptStart | " +
-                            $"Shipment {shipment.Index} current booking service route " +
-                            $"{booking.ServiceRoute?.Id} does not match vessel {vessel.Index} " +
-                            $"assigned service route {assignedServiceRoute.Id}.");
-                    }
+                    Require(
+                        booking.ServiceRoute == assignedServiceRoute,
+                        nameof(AttemptStart),
+                        $"Shipment {shipment.Index} current booking service route " +
+                        $"{booking.ServiceRoute?.Id} does not match vessel {vessel.Index} " +
+                        $"assigned service route {assignedServiceRoute.Id}.");
 
                     if (currentSequenceIndex == null)
                         return true;
@@ -261,13 +248,10 @@ namespace SimulationChallenge2026
 
             foreach (var shipment in candidateShipments)
             {
-                if (shipment.TeuSize <= 0)
-                {
-                    throw new InvalidOperationException(
-                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptStart | " +
-                        $"Shipment {shipment.Index} has non-positive TEU size: " +
-                        $"{shipment.TeuSize}.");
-                }
+                Require(
+                    shipment.TeuSize > 0,
+                    nameof(AttemptStart),
+                    $"Shipment {shipment.Index} has non-positive TEU size: {shipment.TeuSize}.");
 
                 if (selectedTeu + shipment.TeuSize > remainingCapacity)
                     continue;
@@ -293,7 +277,7 @@ namespace SimulationChallenge2026
         /// </summary>
         protected override void AttemptFinish()
         {
-            Log("AttemptFinish");
+            Log(nameof(AttemptFinish));
 
             foreach (var berth in Q_FinishSignals.ToList())
             {

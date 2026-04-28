@@ -11,54 +11,46 @@ namespace SimulationChallenge2026
     /// by quay cranes at a berth.
     /// 
     /// Key characteristics:
-    /// - Start requires an external vessel signal
-    /// - Start matches vessel → berth
-    /// - Duration depends on vessel workload at the current port
+    /// - Start requires an external vessel signal.
+    /// - Start matches vessel to its current berth.
+    /// - Duration depends on vessel workload at the current port.
     /// </summary>
     public class Berth_HandlingCargo : ActivityHandler<Berth>
     {
         /// <summary>
-        /// Start signals carrying vessel information
+        /// Vessel start signals waiting to trigger cargo handling at berth.
         /// </summary>
         public HashSet<Vessel> P_StartSignals { get; } = new();
 
         public Berth_HandlingCargo(int seed = 0)
             : base(id: nameof(Berth_HandlingCargo), seed: seed)
         {
-            // Duration is defined based on berth state (resource-centric design)
+            // Duration is defined based on berth state.
             T_Duration = (berth, rs) => GetDuration(berth, rs);
         }
 
         /// <summary>
-        /// Computes cargo handling duration based on:
-        /// - total TEU to be handled at this port
-        /// - quay crane productivity
-        /// - number of cranes deployable based on vessel LOA
+        /// Computes cargo handling duration based on total loading/discharging TEU
+        /// and quay crane productivity.
         /// </summary>
         private TimeSpan GetDuration(Berth berth, Random rs)
         {
-            var vessel = berth.OccupyingVessel
-                ?? throw new InvalidOperationException(
-                $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | GetDuration | " +
-                $"Berth {berth} has no occupying vessel.");
+            var vessel = RequireNotNull(
+                berth.OccupyingVessel,
+                nameof(GetDuration),
+                $"Berth {berth} occupying vessel");
 
-            var vesselClass = vessel.VesselClass
-                ?? throw new InvalidOperationException(
-                    $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | GetDuration | " +
-                    $"Vessel {vessel.Index} has no vessel class.");
+            var vesselClass = RequireNotNull(
+                vessel.VesselClass,
+                nameof(GetDuration),
+                $"Vessel {vessel.Index} vessel class");
 
-            // Assumed productivity per quay crane
             const double singleQcProductivityTeuPerHour = 30.0;
-
-            // Shoreline length required per quay crane
             const double shorelinePerQcMeter = 100.0;
 
-            // Determine the number of deployable quay cranes based on vessel LOA
             int qcCount = (int)Math.Floor(vesselClass.LOA / shorelinePerQcMeter);
             qcCount = Math.Max(1, qcCount);
 
-            // Compute workload at the current port:
-            // total TEU to discharge + total TEU to load
             int dischargingTeu = vessel.GetDischargingShipmentsAtCurrentSegment()
                 .Sum(shipment => shipment.TeuSize);
 
@@ -74,7 +66,7 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// External signal indicating that a vessel is ready for cargo handling
+        /// Signals that a vessel is ready for cargo handling.
         /// </summary>
         public void SignalStart(Vessel vessel)
         {
@@ -83,12 +75,10 @@ namespace SimulationChallenge2026
 
             Log("SignalStart", vessel);
 
-            if (vessel.CurrentBerth == null)
-            {
-                throw new InvalidOperationException(
-                    $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | SignalStart | " +
-                    $"Vessel {vessel.Index} has null CurrentBerth.");
-            }
+            RequireNotNull(
+                vessel.CurrentBerth,
+                nameof(SignalStart),
+                $"Vessel {vessel.Index} current berth");
 
             if (P_StartSignals.Add(vessel))
             {
@@ -97,7 +87,7 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// Matches vessel signals with available berths and starts processing
+        /// Matches vessel start signals with requested berth loads and starts cargo handling.
         /// </summary>
         protected override void AttemptStart()
         {
@@ -108,22 +98,14 @@ namespace SimulationChallenge2026
 
             foreach (var vessel in P_StartSignals.ToList())
             {
-                var berth = vessel.CurrentBerth;
+                var berth = RequireNotNull(
+                    vessel.CurrentBerth,
+                    nameof(AttemptStart),
+                    $"Vessel {vessel.Index} current berth");
 
-                if (berth == null)
-                {
-                    throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptStart | " +
-                        $"Vessel {vessel.Index} has null CurrentBerth.");
-                }
-
-                // Find matching berth in requested set
                 if (!R_LoadsRequestedStart.Contains(berth))
                     continue;
 
-                // Ensure berth-vessel association is explicitly updated
-                // This supports strong modularity and future deep copy,
-                // as vessel state is not maintained within berth activity handlers
                 berth.OccupyingVessel = vessel;
 
                 P_StartSignals.Remove(vessel);

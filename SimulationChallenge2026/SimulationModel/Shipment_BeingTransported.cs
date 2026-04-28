@@ -12,15 +12,15 @@ namespace SimulationChallenge2026
     /// - Finish is controlled by vessel signals.
     ///
     /// Start:
-    /// - For a signalled vessel, start all shipments in the vessel's current loading set.
+    /// - For a signalled vessel, start all shipments loaded for the vessel's next segment.
     /// - Before starting, assign shipment.CarryingVessel to that vessel.
     ///
     /// Finish:
     /// - For a signalled vessel, finish all ready shipments whose carrying vessel is that vessel
     ///   and which are no longer in vessel.CarriedShipments.
-    /// - Before finishing, validate that the shipment's current booking arrival port matches
-    ///   the departure port of the vessel's current leg.
-    /// - Then clear shipment.CarryingVessel.
+    /// - The discharge segment validation is handled when shipments are removed from
+    ///   vessel.CarriedShipments, not here.
+    /// - Before finishing, clear shipment.CarryingVessel.
     /// </summary>
     public class Shipment_BeingTransported : ActivityHandler<Shipment>
     {
@@ -76,8 +76,11 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// For each signalled vessel, find its current loading shipments,
-        /// assign shipment.CarryingVessel, and start them.
+        /// Starts transported shipments for each signalled vessel.
+        ///
+        /// The vessel identifies the shipments that should be loaded for its next segment.
+        /// Each shipment must have already requested start in this activity before it can
+        /// be started here.
         /// </summary>
         protected override void AttemptStart()
         {
@@ -89,20 +92,18 @@ namespace SimulationChallenge2026
 
                 foreach (var shipment in loadingShipments)
                 {
-                    if (shipment.CarryingVessel != null)
-                    {
-                        throw new InvalidOperationException(
-                            $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptStart | " +
-                            $"Shipment {shipment.Index} already has carrying vessel {shipment.CarryingVessel.Index}.");
-                    }
+                    Require(
+                        shipment.CarryingVessel == null,
+                        nameof(AttemptStart),
+                        $"Shipment {shipment.Index} already has carrying vessel " +
+                        $"{shipment.CarryingVessel?.Index}.");
 
-                    if (!R_LoadsRequestedStart.Contains(shipment))
-                    {
-                        throw new InvalidOperationException(
-                            $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptStart | " +
-                            $"Shipment {shipment.Index} is loaded onto vessel {vessel.Index} " +
-                            $"without requesting start.");
-                    }
+                    Require(
+                        R_LoadsRequestedStart.Contains(shipment),
+                        nameof(AttemptStart),
+                        $"Shipment {shipment.Index} is loaded onto vessel {vessel.Index} " +
+                        $"without requesting start.");
+
                     shipment.CarryingVessel = vessel;
                     Start(shipment);
                 }
@@ -112,12 +113,15 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// For each signalled vessel, find ready shipments whose carrying vessel is that vessel
-        /// and which are no longer in vessel.CarriedShipments.
+        /// Finishes transported shipments for each signalled vessel.
         ///
-        /// Before finishing each shipment:
-        /// - validate booking arrival port against the vessel's current leg departure port
-        /// - clear shipment.CarryingVessel
+        /// A shipment can finish this activity when:
+        /// - it is ready to finish;
+        /// - it is currently carried by the signalled vessel; and
+        /// - it has already been removed from vessel.CarriedShipments.
+        ///
+        /// The vessel's current segment is not checked here because the vessel may
+        /// already have advanced to its next segment by the time this activity finishes.
         /// </summary>
         protected override void AttemptFinish()
         {

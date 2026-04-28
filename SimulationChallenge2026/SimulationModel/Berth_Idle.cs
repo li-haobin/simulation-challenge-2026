@@ -97,17 +97,14 @@ namespace SimulationChallenge2026
         /// - If CurrentSegment is not null, the vessel has completed or is associated
         ///   with that segment, and should berth at that segment's arrival port.
         /// </summary>
-        /// <exception cref="InvalidOperationException">
-        /// Thrown when the vessel's route, segment, leg, or required port is missing.
-        /// </exception>
         private Port GetArrivalPortOrThrow(Vessel vessel)
         {
             if (vessel.CurrentSegment == null)
             {
-                var assignedServiceRoute = vessel.AssignedServiceRoute
-                    ?? throw new InvalidOperationException(
-                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptFinish | " +
-                        $"Vessel {vessel.Index} has null AssignedServiceRoute.");
+                var assignedServiceRoute = RequireNotNull(
+                    vessel.AssignedServiceRoute,
+                    nameof(AttemptFinish),
+                    $"Vessel {vessel.Index} assigned service route");
 
                 var firstSegment = assignedServiceRoute.Segments
                     .OrderBy(segment => segment.SequenceIndex)
@@ -115,33 +112,35 @@ namespace SimulationChallenge2026
 
                 if (firstSegment == null)
                 {
-                    throw new InvalidOperationException(
-                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptFinish | " +
-                        $"Vessel {vessel.Index} has no segments in AssignedServiceRoute {assignedServiceRoute.Id}.");
+                    ThrowActivityException(
+                        nameof(AttemptFinish),
+                        $"Vessel {vessel.Index} has no segments in assigned service route {assignedServiceRoute.Id}.");
                 }
 
-                var firstLeg = firstSegment.AssociatedLeg
-                    ?? throw new InvalidOperationException(
-                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptFinish | " +
-                        $"First segment {firstSegment.SequenceIndex} of vessel {vessel.Index} has null AssociatedLeg.");
+                var firstLeg = RequireNotNull(
+                    firstSegment!.AssociatedLeg,
+                    nameof(AttemptFinish),
+                    $"First segment {firstSegment.SequenceIndex} of vessel {vessel.Index} associated leg");
 
-                var departurePort = firstLeg.DeparturePort
-                    ?? throw new InvalidOperationException(
-                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptFinish | " +
-                        $"First segment {firstSegment.SequenceIndex} of vessel {vessel.Index} has null DeparturePort.");
+                var departurePort = RequireNotNull(
+                    firstLeg.DeparturePort,
+                    nameof(AttemptFinish),
+                    $"First segment {firstSegment.SequenceIndex} of vessel {vessel.Index} departure port");
 
                 return departurePort;
             }
 
-            var currentLeg = vessel.CurrentSegment.AssociatedLeg
-                ?? throw new InvalidOperationException(
-                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptFinish | " +
-                    $"Current segment {vessel.CurrentSegment.SequenceIndex} of vessel {vessel.Index} has null AssociatedLeg.");
+            var currentSegment = vessel.CurrentSegment;
 
-            var arrivalPort = currentLeg.ArrivalPort
-                ?? throw new InvalidOperationException(
-                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptFinish | " +
-                    $"Current segment {vessel.CurrentSegment.SequenceIndex} of vessel {vessel.Index} has null ArrivalPort.");
+            var currentLeg = RequireNotNull(
+                currentSegment.AssociatedLeg,
+                nameof(AttemptFinish),
+                $"Current segment {currentSegment.SequenceIndex} of vessel {vessel.Index} associated leg");
+
+            var arrivalPort = RequireNotNull(
+                currentLeg.ArrivalPort,
+                nameof(AttemptFinish),
+                $"Current segment {currentSegment.SequenceIndex} of vessel {vessel.Index} arrival port");
 
             return arrivalPort;
         }
