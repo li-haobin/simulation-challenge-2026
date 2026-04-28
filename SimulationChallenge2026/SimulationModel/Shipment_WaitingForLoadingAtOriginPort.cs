@@ -7,13 +7,21 @@ namespace SimulationChallenge2026
     /// <summary>
     /// Represents shipments waiting for loading at their origin port.
     ///
+    /// This activity is responsible for preparing a shipment before it enters
+    /// the transport process. In particular, before a shipment leaves this
+    /// waiting state, the activity assigns a chain of bookings that connects
+    /// the shipment's origin port to its destination port.
+    ///
     /// Design:
-    /// - No start gate control
-    /// - No finish gate control
-    /// - Before finishing, assign the shipment's booking chain
+    /// - Start has no additional gate control.
+    /// - Finish has no external gate control.
+    /// - Before finishing, each ready shipment is assigned a feasible booking chain.
     /// </summary>
     public class Shipment_WaitingForLoadingAtOriginPort : ActivityHandler<Shipment>
     {
+        /// <summary>
+        /// Maritime scenario data used to construct feasible booking options.
+        /// </summary>
         public MaritimeDataContext MaritimeDataContext { get; }
 
         public Shipment_WaitingForLoadingAtOriginPort(
@@ -28,8 +36,11 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// Finish all ready shipments without external finish gating.
-        /// Before finishing, assign the shipment's associated bookings.
+        /// Attempts to finish all ready shipments.
+        ///
+        /// Since this activity has no external finish gate, every ready shipment
+        /// can finish immediately. Before finishing, the shipment is assigned
+        /// its booking chain.
         /// </summary>
         protected override void AttemptFinish()
         {
@@ -43,8 +54,15 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// Assigns the booking chain for the shipment by solving a shortest-path problem
-        /// on the port network induced by all feasible route-based bookings.
+        /// Assigns a booking chain to the shipment.
+        ///
+        /// The method first builds all feasible route-based booking options from
+        /// the available service routes. It then solves a shortest-path problem
+        /// from the shipment's origin port to its destination port, where each
+        /// edge represents one feasible booking option on a service route and
+        /// the edge weight is the sailing distance covered by that booking.
+        ///
+        /// The resulting path is converted into the shipment's associated bookings.
         /// </summary>
         private void AssignAssociatedBookings(Shipment shipment)
         {
@@ -53,27 +71,27 @@ namespace SimulationChallenge2026
 
             var demand = shipment.Demand
                 ?? throw new InvalidOperationException(
-                    $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AssignAssociatedBookings | " +
+                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AssignAssociatedBookings | " +
                     $"Shipment {shipment.Index} has null Demand.");
 
             var originPort = demand.OriginPort
                 ?? throw new InvalidOperationException(
-                    $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AssignAssociatedBookings | " +
+                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AssignAssociatedBookings | " +
                     $"Shipment {shipment.Index} demand has null OriginPort.");
 
             var destinationPort = demand.DestinationPort
                 ?? throw new InvalidOperationException(
-                    $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AssignAssociatedBookings | " +
+                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AssignAssociatedBookings | " +
                     $"Shipment {shipment.Index} demand has null DestinationPort.");
 
-            // Reset first, in case this method is called more than once.
+            // Reset existing booking state in case this method is called more than once.
             shipment.AssociatedBookings.Clear();
             shipment.CurrentBookingIndex = null;
 
             if (originPort == destinationPort)
             {
                 throw new InvalidOperationException(
-                    $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AssignAssociatedBookings | " +
+                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AssignAssociatedBookings | " +
                     $"Shipment {shipment.Index} has same origin and destination port.");
             }
 
@@ -87,7 +105,7 @@ namespace SimulationChallenge2026
             if (path == null || path.Count == 0)
             {
                 throw new InvalidOperationException(
-                    $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AssignAssociatedBookings | " +
+                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AssignAssociatedBookings | " +
                     $"No feasible booking chain found for shipment {shipment.Index} " +
                     $"from {originPort.Name} to {destinationPort.Name}.");
             }
@@ -107,23 +125,24 @@ namespace SimulationChallenge2026
 
                 shipment.AssociatedBookings.Add(booking);
                 edge.ServiceRoute.AssociatedBookings.Add(booking);
-
             }
 
             shipment.CurrentBookingIndex = shipment.AssociatedBookings
-                .Min(b => b.SequenceIndex);
+                .Min(booking => booking.SequenceIndex);
         }
 
         /// <summary>
-        /// Builds all feasible "single-booking" edges from all service routes.
+        /// Builds all feasible single-booking options from all service routes.
         ///
-        /// A single booking:
-        /// - uses one service route only
-        /// - may span multiple consecutive legs on that route
-        /// - follows the cyclic order of the service route
+        /// A single booking option:
+        /// - uses one service route only;
+        /// - starts from the departure port of one segment;
+        /// - ends at the arrival port of a later segment on the same cyclic route;
+        /// - may span multiple consecutive segments within that service route.
         ///
-        /// To avoid degenerate full-cycle bookings, we only allow up to n-1 legs
-        /// on a route with n partial service routes.
+        /// For a service route with n segments, only paths of length 1 to n - 1
+        /// segments are allowed. This avoids creating degenerate full-cycle bookings
+        /// that start and end at the same port after completing an entire route cycle.
         /// </summary>
         private List<CandidateBookingEdge> BuildAllCandidateBookings()
         {
@@ -131,24 +150,24 @@ namespace SimulationChallenge2026
 
             foreach (var serviceRoute in MaritimeDataContext.ServiceRoutes)
             {
-                var partialRoutes = serviceRoute.PartialServiceRoutes
-                    .OrderBy(p => p.SequenceIndex)
+                var segments = serviceRoute.Segments
+                    .OrderBy(segment => segment.SequenceIndex)
                     .ToList();
 
-                if (partialRoutes.Count == 0)
+                if (segments.Count == 0)
                     continue;
 
-                int n = partialRoutes.Count;
+                int n = segments.Count;
 
                 for (int startIndex = 0; startIndex < n; startIndex++)
                 {
                     double cumulativeDistance = 0.0;
-                    var departurePort = partialRoutes[startIndex].AssociatedLeg.DeparturePort;
+                    var departurePort = segments[startIndex].AssociatedLeg.DeparturePort;
 
                     for (int step = 1; step <= n - 1; step++)
                     {
-                        int legIndex = (startIndex + step - 1) % n;
-                        var leg = partialRoutes[legIndex].AssociatedLeg;
+                        int segmentIndex = (startIndex + step - 1) % n;
+                        var leg = segments[segmentIndex].AssociatedLeg;
 
                         cumulativeDistance += leg.SailingDistance;
 
@@ -174,8 +193,15 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// Finds the shortest booking path from origin to destination using Dijkstra.
-        /// Each candidate booking edge is a route-based movement between two ports.
+        /// Finds the shortest chain of booking options from origin to destination.
+        ///
+        /// This method applies Dijkstra's algorithm to a directed graph where:
+        /// - nodes are ports;
+        /// - edges are feasible route-based booking options; and
+        /// - edge weights are total sailing distances.
+        ///
+        /// The returned path is a sequence of candidate booking edges that connects
+        /// the origin port to the destination port.
         /// </summary>
         private List<CandidateBookingEdge>? FindShortestBookingPath(
             Port originPort,
@@ -183,12 +209,12 @@ namespace SimulationChallenge2026
             List<CandidateBookingEdge> allEdges)
         {
             var outgoing = allEdges
-                .GroupBy(e => e.DeparturePort)
-                .ToDictionary(g => g.Key, g => g.ToList());
+                .GroupBy(edge => edge.DeparturePort)
+                .ToDictionary(group => group.Key, group => group.ToList());
 
             var ports = MaritimeDataContext.Ports.ToList();
 
-            var distance = ports.ToDictionary(p => p, _ => double.PositiveInfinity);
+            var distance = ports.ToDictionary(port => port, _ => double.PositiveInfinity);
             var previousEdge = new Dictionary<Port, CandidateBookingEdge?>();
             var unvisited = new HashSet<Port>(ports);
 
@@ -198,7 +224,7 @@ namespace SimulationChallenge2026
             while (unvisited.Count > 0)
             {
                 var current = unvisited
-                    .OrderBy(p => distance[p])
+                    .OrderBy(port => distance[port])
                     .First();
 
                 if (double.IsPositiveInfinity(distance[current]))
@@ -249,15 +275,45 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// Internal representation of one feasible booking option.
+        /// Represents one feasible route-based booking option.
+        ///
+        /// A candidate booking edge connects a departure port to an arrival port
+        /// using one service route. It may span one or more consecutive segments
+        /// on that cyclic route.
+        ///
+        /// This object is used only during booking-chain construction and is
+        /// converted into a real Booking once selected by the shortest-path search.
         /// </summary>
         private sealed class CandidateBookingEdge
         {
+            /// <summary>
+            /// Service route used by this candidate booking.
+            /// </summary>
             public ServiceRoute ServiceRoute { get; set; } = null!;
+
+            /// <summary>
+            /// Port where the candidate booking starts.
+            /// </summary>
             public Port DeparturePort { get; set; } = null!;
+
+            /// <summary>
+            /// Port where the candidate booking ends.
+            /// </summary>
             public Port ArrivalPort { get; set; } = null!;
-            public int DepartureSegmentIndex { get; set; } 
+
+            /// <summary>
+            /// Sequence index of the segment where the shipment is loaded.
+            /// </summary>
+            public int DepartureSegmentIndex { get; set; }
+
+            /// <summary>
+            /// Sequence index of the segment where the shipment is discharged.
+            /// </summary>
             public int ArrivalSegmentIndex { get; set; }
+
+            /// <summary>
+            /// Total sailing distance covered by this candidate booking.
+            /// </summary>
             public double TotalDistance { get; set; }
         }
     }

@@ -1,13 +1,5 @@
 # TODO
 
-## Naming and Structure
-
-- Rename `PartialServiceRoute` to `Segment` where appropriate.
-- Review related method names, including:
-  - `GetNextPartialServiceRoute()`
-  - `CurrentPartialServiceRoute`
-  - `PartialServiceRoutes`
-
 ## Comments and Exceptions
 
 - Refine code comments to align with the segment-based logic.

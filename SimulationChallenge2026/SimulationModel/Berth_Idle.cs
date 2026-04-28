@@ -5,15 +5,23 @@ using System.Linq;
 namespace SimulationChallenge2026
 {
     /// <summary>
-    /// Idle activity of berths.
-    /// 
-    /// A berth starts idling unconditionally once requested.
-    /// A berth finishes idling only when a vessel arrives and matches the berth's port.
+    /// Represents the idle activity of berths.
+    ///
+    /// A berth enters the idle state once its start is requested by the activity framework.
+    /// It leaves the idle state only when an arriving vessel can be matched to the berth's port.
+    ///
+    /// Matching rule:
+    /// - If the vessel has no current segment, it is treated as being at the departure
+    ///   port of the first segment in its assigned service route.
+    /// - Otherwise, it is treated as arriving at the arrival port of its current segment.
     /// </summary>
     public class Berth_Idle : ActivityHandler<Berth>
     {
         /// <summary>
-        /// Finish signals carrying arriving vessel information
+        /// Vessel finish signals waiting to seize an idle berth.
+        ///
+        /// Each vessel signal represents a vessel that is ready to occupy a berth
+        /// at its current arrival port.
         /// </summary>
         public HashSet<Vessel> Q_FinishSignals { get; } = new();
 
@@ -23,7 +31,11 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// External signal indicating that a vessel is ready to occupy a berth
+        /// Signals that a vessel is ready to occupy a berth.
+        ///
+        /// The vessel is not assigned immediately. Instead, the signal is stored
+        /// and AttemptFinish is scheduled, where the vessel is matched with an
+        /// available idle berth at the correct port.
         /// </summary>
         public void SignalFinish(Vessel vessel)
         {
@@ -39,8 +51,15 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// Finish idling only when an arriving vessel can be matched
-        /// with an idle berth at the vessel's arrival port.
+        /// Attempts to match signalled vessels with idle berths.
+        ///
+        /// For each vessel signal:
+        /// 1. Determine the port where the vessel should occupy a berth.
+        /// 2. Find an idle berth at that port.
+        /// 3. Assign the vessel and berth to each other.
+        /// 4. Finish the berth's idle activity.
+        ///
+        /// If no matching berth is currently idle, the vessel signal remains pending.
         /// </summary>
         protected override void AttemptFinish()
         {
@@ -69,68 +88,60 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// Gets the port where the vessel should occupy a berth.
-        /// 
-        /// If CurrentPartialServiceRoute is null, the vessel is considered to be
-        /// at the departure port of the first partial service route in its assigned service route.
-        /// Otherwise, the vessel is considered to arrive at the arrival port of its current partial service route.
-        /// 
-        /// Throws if routing state is incomplete.
+        /// Determines the port where the vessel should occupy a berth.
+        ///
+        /// Interpretation:
+        /// - If CurrentSegment is null, the vessel has not yet entered the route cycle.
+        ///   It is therefore placed at the departure port of the first segment of its
+        ///   assigned service route.
+        /// - If CurrentSegment is not null, the vessel has completed or is associated
+        ///   with that segment, and should berth at that segment's arrival port.
         /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when the vessel's route, segment, leg, or required port is missing.
+        /// </exception>
         private Port GetArrivalPortOrThrow(Vessel vessel)
         {
-            if (vessel.CurrentPartialServiceRoute == null)
+            if (vessel.CurrentSegment == null)
             {
-                if (vessel.AssignedServiceRoute == null)
-                {
-                    throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
+                var assignedServiceRoute = vessel.AssignedServiceRoute
+                    ?? throw new InvalidOperationException(
+                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptFinish | " +
                         $"Vessel {vessel.Index} has null AssignedServiceRoute.");
-                }
 
-                var firstPartialRoute = vessel.AssignedServiceRoute.PartialServiceRoutes.FirstOrDefault();
+                var firstSegment = assignedServiceRoute.Segments
+                    .OrderBy(segment => segment.SequenceIndex)
+                    .FirstOrDefault();
 
-                if (firstPartialRoute == null)
+                if (firstSegment == null)
                 {
                     throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
-                        $"Vessel {vessel.Index} has no PartialServiceRoutes in AssignedServiceRoute.");
+                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptFinish | " +
+                        $"Vessel {vessel.Index} has no segments in AssignedServiceRoute {assignedServiceRoute.Id}.");
                 }
 
-                if (firstPartialRoute.AssociatedLeg == null)
-                {
-                    throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
-                        $"First PartialServiceRoute of Vessel {vessel.Index} has null AssociatedLeg.");
-                }
+                var firstLeg = firstSegment.AssociatedLeg
+                    ?? throw new InvalidOperationException(
+                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptFinish | " +
+                        $"First segment {firstSegment.SequenceIndex} of vessel {vessel.Index} has null AssociatedLeg.");
 
-                var departurePort = firstPartialRoute.AssociatedLeg.DeparturePort;
-
-                if (departurePort == null)
-                {
-                    throw new InvalidOperationException(
-                        $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
-                        $"First PartialServiceRoute of Vessel {vessel.Index} has null DeparturePort.");
-                }
+                var departurePort = firstLeg.DeparturePort
+                    ?? throw new InvalidOperationException(
+                        $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptFinish | " +
+                        $"First segment {firstSegment.SequenceIndex} of vessel {vessel.Index} has null DeparturePort.");
 
                 return departurePort;
             }
 
-            if (vessel.CurrentPartialServiceRoute.AssociatedLeg == null)
-            {
-                throw new InvalidOperationException(
-                    $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
-                    $"Vessel {vessel.Index} has null AssociatedLeg.");
-            }
+            var currentLeg = vessel.CurrentSegment.AssociatedLeg
+                ?? throw new InvalidOperationException(
+                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptFinish | " +
+                    $"Current segment {vessel.CurrentSegment.SequenceIndex} of vessel {vessel.Index} has null AssociatedLeg.");
 
-            var arrivalPort = vessel.CurrentPartialServiceRoute.AssociatedLeg.ArrivalPort;
-
-            if (arrivalPort == null)
-            {
-                throw new InvalidOperationException(
-                    $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | AttemptFinish | " +
-                    $"Vessel {vessel.Index} has null ArrivalPort.");
-            }
+            var arrivalPort = currentLeg.ArrivalPort
+                ?? throw new InvalidOperationException(
+                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptFinish | " +
+                    $"Current segment {vessel.CurrentSegment.SequenceIndex} of vessel {vessel.Index} has null ArrivalPort.");
 
             return arrivalPort;
         }

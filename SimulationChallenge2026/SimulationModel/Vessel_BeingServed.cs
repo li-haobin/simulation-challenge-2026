@@ -5,39 +5,45 @@ using System.Linq;
 namespace SimulationChallenge2026
 {
     /// <summary>
-    /// Represents vessels being served at berth.
+    /// Represents the activity in which vessels are served at berth.
+    ///
+    /// During this activity, a vessel may load new shipments, discharge arrived
+    /// shipments, and then advance to its next route segment.
     ///
     /// Start side:
     /// - Controlled by shipment signals accumulated in P_StartSignals.
-    /// - For each vessel requesting start, the handler searches the global shipment pool
+    /// - For each vessel requesting start, the handler searches the pending shipment pool
     ///   for shipments whose current booking:
-    ///   1. belongs to the same service route as the vessel, and
-    ///   2. departs from the vessel's current port.
-    /// - A subset of such shipments may be selected and added to the vessel's carried
-    ///   shipments, subject to the vessel TEU capacity constraint.
+    ///   1. belongs to the same service route as the vessel; and
+    ///   2. departs on the vessel's next segment.
+    /// - A subset of such shipments is selected and added to vessel.CarriedShipments,
+    ///   subject to the vessel TEU capacity constraint.
     /// - The vessel is allowed to start even if no shipment is selected for loading.
     ///
     /// Finish side:
     /// - Controlled by berth signals.
     /// - A ready vessel is matched by vessel.CurrentBerth == berth.
-    /// - Before finishing, the vessel is advanced to the next partial service route
-    ///   in the cyclic service route and released from the berth.
+    /// - Shipments whose current booking arrives at the vessel's current segment are
+    ///   removed from vessel.CarriedShipments.
+    /// - The vessel is then advanced to the next segment in its cyclic service route
+    ///   and released from the berth.
     /// </summary>
     public class Vessel_BeingServed : ActivityHandler<Vessel>
     {
         /// <summary>
-        /// Pending shipment signals representing shipments currently available
-        /// for loading consideration.
+        /// Pending shipment signals representing shipments available for loading consideration.
         ///
-        /// This is a global pool shared across all vessels handled by this activity.
-        /// Matching to a specific vessel is performed later in AttemptStart().
+        /// This is a shared pool across all vessels handled by this activity.
+        /// A shipment is matched to a vessel later in AttemptStart(), based on the
+        /// vessel's assigned service route and next segment.
         /// </summary>
         private readonly HashSet<Shipment> P_StartSignals = new();
 
         /// <summary>
         /// Finish signal tokens keyed by berth.
-        /// Each token may allow one ready vessel currently associated with that berth
-        /// to leave this activity.
+        ///
+        /// Each token may allow one ready vessel currently occupying the signalled
+        /// berth to finish being served.
         /// </summary>
         private readonly HashSet<Berth> Q_FinishSignals = new();
 
@@ -51,17 +57,11 @@ namespace SimulationChallenge2026
         /// <summary>
         /// Registers a shipment as available for loading consideration.
         ///
-        /// This method does not directly assign the shipment to any vessel.
-        /// Instead, it adds the shipment to the shared pending shipment pool
-        /// P_StartSignals and schedules AttemptStart().
-        ///
-        /// Requirements:
-        /// - The shipment must not already be carried by any vessel.
-        ///
-        /// Actual vessel-shipment matching, capacity checks, and loading selection
-        /// are all handled later in AttemptStart().
+        /// This method does not directly assign the shipment to a vessel.
+        /// It only adds the shipment to the pending shipment pool and schedules
+        /// AttemptStart(). Actual vessel-shipment matching and capacity checks are
+        /// handled in AttemptStart().
         /// </summary>
-        /// <param name="shipment">The shipment that becomes available for loading consideration.</param>
         public void SignalStart(Shipment shipment)
         {
             if (shipment == null)
@@ -72,7 +72,7 @@ namespace SimulationChallenge2026
             if (shipment.CarryingVessel != null)
             {
                 throw new InvalidOperationException(
-                    $"[{ClockTime:d\\.hh\\:mm\\:ss}] {Id} | SignalStart | " +
+                    $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | SignalStart | " +
                     $"Shipment {shipment.Index} already has carrying vessel {shipment.CarryingVessel.Index}.");
             }
 
@@ -83,9 +83,10 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// External finish signal associated with a berth.
+        /// Signals that a berth service may finish.
+        ///
+        /// The berth is used to identify which ready vessel can leave this activity.
         /// </summary>
-        /// <param name="berth">The berth that triggers a potential finish.</param>
         public void SignalFinish(Berth berth)
         {
             if (berth == null)
@@ -100,22 +101,17 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// Attempts to start vessels by selecting loadable shipments from the global
-        /// pending shipment pool.
+        /// Attempts to start vessel service by loading feasible shipments.
         ///
-        /// For each vessel in the requested-start list:
-        /// 1. Identify candidate shipments in P_StartSignals whose current booking:
-        ///    - belongs to the same service route as the vessel, and
-        ///    - departs from the vessel's current port.
-        /// 2. Ensure each candidate shipment is currently unassigned to any vessel.
-        /// 3. Compute the vessel's currently occupied TEU, excluding shipments whose
-        ///    current booking arrives at the current port, since those shipments are
-        ///    considered to be discharged here.
-        /// 4. Select a subset of candidate shipments that fits within the vessel's
-        ///    remaining TEU capacity.
-        /// 5. Add the selected shipments to vessel.CarriedShipments.
-        /// 6. Remove the selected shipments from P_StartSignals.
-        /// 7. Start the vessel, even if no shipment is selected.
+        /// For each vessel that has requested start:
+        /// 1. Determine the vessel's assigned service route and next segment.
+        /// 2. Select pending shipments whose current booking departs on that next segment.
+        /// 3. Calculate occupied TEU before loading. Shipments arriving at the current
+        ///    segment are excluded because they are treated as dischargeable at this berth.
+        /// 4. Select loadable shipments within the remaining TEU capacity.
+        /// 5. Add selected shipments to vessel.CarriedShipments.
+        /// 6. Remove selected shipments from the pending shipment pool.
+        /// 7. Start the vessel service activity, even if no shipment is loaded.
         /// </summary>
         protected override void AttemptStart()
         {
@@ -133,19 +129,19 @@ namespace SimulationChallenge2026
                         $"[{ClockTime:yyyy-MM-dd HH:mm:ss}] {Id} | AttemptStart | " +
                         $"Vessel {vessel.Index} has no vessel class.");
 
-                var currentPartialServiceRoute = vessel.CurrentPartialServiceRoute;
+                var currentSegment = vessel.CurrentSegment;
 
-                // Loading should be based on the next partial service route.
-                // If CurrentPartialServiceRoute is null, GetNextPartialServiceRoute()
-                // returns the first partial service route.
-                var nextPartialServiceRoute = vessel.GetNextPartialServiceRoute();
+                // Loading is based on the next segment.
+                // If CurrentSegment is null, GetNextSegment() returns the first segment
+                // of the assigned service route.
+                var nextSegment = vessel.GetNextSegment();
 
-                int? currentSequenceIndex = currentPartialServiceRoute?.SequenceIndex;
-                int nextSequenceIndex = nextPartialServiceRoute.SequenceIndex;
+                int? currentSequenceIndex = currentSegment?.SequenceIndex;
+                int nextSequenceIndex = nextSegment.SequenceIndex;
 
                 var candidateShipments = GetCandidateShipmentsForLoading(
-                   assignedServiceRoute,
-                   nextSequenceIndex);
+                    assignedServiceRoute,
+                    nextSequenceIndex);
 
                 int occupiedTeu = CalculateOccupiedTeuBeforeLoading(
                     vessel,
@@ -181,8 +177,13 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// Finds pending shipments that can be loaded onto the vessel for its
-        /// next partial service route.
+        /// Finds pending shipments that can be loaded onto a vessel for its next segment.
+        ///
+        /// A shipment is a loading candidate when:
+        /// - it is waiting in the pending shipment pool;
+        /// - it is not currently carried by another vessel;
+        /// - its current booking uses the vessel's assigned service route; and
+        /// - its departure segment index matches the vessel's next segment index.
         /// </summary>
         private List<Shipment> GetCandidateShipmentsForLoading(
             ServiceRoute assignedServiceRoute,
@@ -208,10 +209,15 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// Calculates the vessel's occupied TEU before loading.
+        /// Calculates the vessel's occupied TEU before loading new shipments.
         ///
-        /// If currentSequenceIndex is null, the vessel has no current partial service route,
-        /// so no shipment is excluded as being discharged at the current segment.
+        /// Shipments whose current booking belongs to another service route indicate
+        /// an inconsistent model state and therefore raise an exception.
+        ///
+        /// If currentSequenceIndex is null, the vessel has not yet entered any segment,
+        /// so no onboard shipment is excluded as dischargeable. Otherwise, shipments
+        /// whose arrival segment index matches the current segment are excluded from
+        /// occupied TEU because they are expected to be discharged at this berth.
         /// </summary>
         private int CalculateOccupiedTeuBeforeLoading(
             Vessel vessel,
@@ -241,8 +247,10 @@ namespace SimulationChallenge2026
         }
 
         /// <summary>
-        /// Selects shipments greedily from the candidate list until the remaining
-        /// TEU capacity is reached.
+        /// Selects candidate shipments using a simple greedy loading rule.
+        ///
+        /// Candidates are processed in their current order. A shipment is selected
+        /// if adding its TEU size does not exceed the remaining vessel capacity.
         /// </summary>
         private List<Shipment> SelectShipmentsWithinCapacity(
             List<Shipment> candidateShipments,
@@ -275,13 +283,13 @@ namespace SimulationChallenge2026
         /// Attempts to finish vessels based on berth-specific finish signals.
         ///
         /// For each berth signal:
-        /// 1. Find the ready-to-finish vessel whose current berth matches the signalled berth
-        /// 2. Consume the finish signal
-        /// 3. Remove all carried shipments whose current booking arrives at the current port
-        /// 4. Remove the vessel from its current partial service route
-        /// 5. Advance the vessel to the next partial service route in the cyclic route
-        /// 6. Clear the vessel's current berth
-        /// 7. Finish the vessel
+        /// 1. Find a ready-to-finish vessel whose CurrentBerth matches the signalled berth.
+        /// 2. Consume the berth finish signal.
+        /// 3. Remove shipments that should be discharged at the vessel's current segment.
+        /// 4. Remove the vessel from the current segment's vessel list, if applicable.
+        /// 5. Advance the vessel to the next segment in its cyclic service route.
+        /// 6. Clear the vessel's berth association.
+        /// 7. Finish the vessel service activity.
         /// </summary>
         protected override void AttemptFinish()
         {
@@ -295,32 +303,32 @@ namespace SimulationChallenge2026
                 if (vessel == null)
                     continue;
 
-                // Consume the finish token
+                // Consume the finish token.
                 Q_FinishSignals.Remove(berth);
 
-                // Remove all shipments to be discharged at the current port
+                // Remove shipments that complete their current booking at this segment.
                 var dischargingShipments = vessel.GetDischargingShipmentsAtCurrentSegment();
+
                 foreach (var shipment in dischargingShipments)
                 {
                     vessel.CarriedShipments.Remove(shipment);
                 }
 
-                // Remove the vessel from its current partial service route only if one is assigned
-                if (vessel.CurrentPartialServiceRoute != null)
+                // Remove the vessel from its current segment before advancing.
+                if (vessel.CurrentSegment != null)
                 {
-                    vessel.CurrentPartialServiceRoute.CurrentVessels.Remove(vessel);
+                    vessel.CurrentSegment.CurrentVessels.Remove(vessel);
                 }
 
-                // Advance the vessel to the next partial service route.
-                // If CurrentPartialServiceRoute is null, this initializes it to the first route.
-                var nextPartialServiceRoute = vessel.GetNextPartialServiceRoute();
-                vessel.CurrentPartialServiceRoute = nextPartialServiceRoute;
-                nextPartialServiceRoute.CurrentVessels.Add(vessel);
+                // Advance to the next segment. If CurrentSegment is null, this initializes
+                // the vessel to the first segment of its assigned service route.
+                var nextSegment = vessel.GetNextSegment();
+                vessel.CurrentSegment = nextSegment;
+                nextSegment.CurrentVessels.Add(vessel);
 
-                // Release berth association
+                // Release berth association.
                 vessel.CurrentBerth = null;
 
-                // Fire the finish event
                 Finish(vessel);
             }
         }

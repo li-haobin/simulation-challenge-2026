@@ -1,22 +1,81 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace SimulationChallenge2026
 {
+    /// <summary>
+    /// Stores the maritime domain data used by the simulation scenario.
+    ///
+    /// This context is mainly used as an in-memory data container. It holds all
+    /// static entities created during scenario initialization, including ports,
+    /// demands, service routes, physical legs, route segments, vessel classes,
+    /// and vessels.
+    /// </summary>
     public class MaritimeDataContext
     {
+        /// <summary>
+        /// All ports included in the scenario.
+        /// </summary>
         public List<Port> Ports { get; } = new();
+
+        /// <summary>
+        /// Origin-destination container demands between ports.
+        /// </summary>
         public List<Demand> Demands { get; } = new();
+
+        /// <summary>
+        /// Liner service routes operated in the scenario.
+        /// </summary>
         public List<ServiceRoute> ServiceRoutes { get; } = new();
+
+        /// <summary>
+        /// Physical sailing legs between two ports.
+        ///
+        /// A leg represents a port-to-port movement and may be reused by
+        /// segments from different service routes.
+        /// </summary>
         public List<Leg> Legs { get; } = new();
-        public List<PartialServiceRoute> PartialServiceRoutes { get; } = new();
+
+        /// <summary>
+        /// Ordered segments belonging to service routes.
+        ///
+        /// TODO:
+        /// This property name is kept for compatibility with earlier code.
+        /// It should later be renamed from PartialServiceRoutes to Segments.
+        /// </summary>
+        public List<Segment> PartialServiceRoutes { get; } = new();
+
+        /// <summary>
+        /// Vessel classes, including capacity and sailing characteristics.
+        /// </summary>
         public List<VesselClass> VesselClasses { get; } = new();
+
+        /// <summary>
+        /// Individual vessels deployed on service routes.
+        /// </summary>
         public List<Vessel> Vessels { get; } = new();
     }
 
+    /// <summary>
+    /// Creates the baseline maritime simulation dataset.
+    ///
+    /// The initializer builds the data in the following order:
+    /// 1. Ports and berths
+    /// 2. Port-to-port demands
+    /// 3. Service routes, legs, and route segments
+    /// 4. Vessel classes
+    /// 5. Vessels assigned to service routes
+    ///
+    /// The resulting data context can then be used by the simulation model
+    /// to generate shipments, deploy vessels, and execute operational logic.
+    /// </summary>
     public static class MaritimeDataInitializer
     {
+        /// <summary>
+        /// Creates and returns a fully initialized maritime data context.
+        /// </summary>
         public static MaritimeDataContext Create()
         {
             var context = new MaritimeDataContext();
@@ -30,6 +89,16 @@ namespace SimulationChallenge2026
             return context;
         }
 
+        /// <summary>
+        /// Initializes the ports included in the scenario.
+        ///
+        /// For simplicity, each port is created with one berth. The berth is
+        /// linked back to its owning port, and the port is stored in both the
+        /// context list and a name-based lookup dictionary.
+        /// </summary>
+        /// <returns>
+        /// A case-insensitive dictionary for retrieving ports by name.
+        /// </returns>
         private static Dictionary<string, Port> InitializePorts(MaritimeDataContext context)
         {
             string[] portNames =
@@ -65,6 +134,8 @@ namespace SimulationChallenge2026
                     Name = name
                 };
 
+                // Baseline assumption: each port has one berth.
+                // More berths can be added later when scenario tuning is required.
                 var berth = new Berth
                 {
                     Index = 0,
@@ -80,6 +151,17 @@ namespace SimulationChallenge2026
             return portDict;
         }
 
+        /// <summary>
+        /// Initializes annual TEU demands between all port pairs.
+        ///
+        /// The annualTeus matrix is indexed by origin port i and destination port j.
+        /// Entries with i == j or non-positive demand are skipped.
+        ///
+        /// Each created demand is added to:
+        /// - the global demand list in the context;
+        /// - the origin port's outgoing demand list; and
+        /// - the destination port's incoming demand list.
+        /// </summary>
         private static void InitializeDemands(
             MaritimeDataContext context,
             Dictionary<string, Port> ports)
@@ -158,10 +240,30 @@ namespace SimulationChallenge2026
             }
         }
 
+        /// <summary>
+        /// Initializes liner service routes and their ordered segments.
+        ///
+        /// Each route is defined by an ordered list of segment data:
+        /// - sequence index;
+        /// - departure port;
+        /// - arrival port; and
+        /// - sailing distance.
+        ///
+        /// For each segment, the initializer creates:
+        /// - a physical Leg;
+        /// - a Segment associated with that leg and service route;
+        /// - bidirectional references among ports, legs, segments, and routes.
+        /// </summary>
         private static void InitializeServiceRoutes(
             MaritimeDataContext context,
             Dictionary<string, Port> ports)
         {
+            /// <summary>
+            /// Local helper for adding one complete service route.
+            ///
+            /// The route is stored first, then its segment records are sorted by
+            /// sequence index and added one by one.
+            /// </summary>
             void AddRoute(
                 string id,
                 string name,
@@ -179,6 +281,7 @@ namespace SimulationChallenge2026
 
                 foreach (var (seq, from, to, distanceNm) in legsData.OrderBy(x => x.seq))
                 {
+                    // Physical port-to-port leg.
                     var leg = new Leg
                     {
                         DeparturePort = ports[from],
@@ -191,17 +294,18 @@ namespace SimulationChallenge2026
                     ports[from].OutgoingLegs.Add(leg);
                     ports[to].IncomingLegs.Add(leg);
 
-                    var partialServiceRoute = new PartialServiceRoute
+                    // Service-route segment using this physical leg.
+                    var segment = new Segment
                     {
                         SequenceIndex = seq,
                         AssociatedLeg = leg,
                         AssociatedServiceRoute = route,
                     };
 
-                    context.PartialServiceRoutes.Add(partialServiceRoute);
+                    context.PartialServiceRoutes.Add(segment);
 
-                    leg.PartialServiceRoutes.Add(partialServiceRoute);
-                    route.PartialServiceRoutes.Add(partialServiceRoute);
+                    leg.Segments.Add(segment);
+                    route.Segments.Add(segment);
                 }
             }
 
@@ -314,8 +418,12 @@ namespace SimulationChallenge2026
                 });
         }
 
-
-
+        /// <summary>
+        /// Initializes vessel classes used in the scenario.
+        ///
+        /// Each vessel class defines the capacity, sailing speed, and length
+        /// overall of vessels belonging to that class.
+        /// </summary>
         private static void InitializeVesselClasses(MaritimeDataContext context)
         {
             var vesselClasses = new[]
@@ -331,6 +439,15 @@ namespace SimulationChallenge2026
             context.VesselClasses.AddRange(vesselClasses);
         }
 
+        /// <summary>
+        /// Initializes vessels and assigns them to service routes.
+        ///
+        /// The route plan specifies how many vessels of each class are deployed
+        /// on each service route. Each created vessel is linked to:
+        /// - the global vessel list;
+        /// - its vessel class; and
+        /// - its assigned service route.
+        /// </summary>
         private static void InitializeVessels(MaritimeDataContext context)
         {
             var vesselClassByName = context.VesselClasses
@@ -369,7 +486,5 @@ namespace SimulationChallenge2026
                 }
             }
         }
-
     }
-
 }

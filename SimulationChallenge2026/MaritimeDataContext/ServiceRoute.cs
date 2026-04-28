@@ -3,16 +3,14 @@
 namespace SimulationChallenge2026
 {
     /// <summary>
-    /// Represents a liner shipping service route.
-    /// 
-    /// A service route defines a cyclic sequence of legs (PartialServiceRoutes)
-    /// and the vessels deployed on this route.
-    /// 
-    /// Bookings associated with this route serve as the linkage that
-    /// represents how shipments dynamically utilize the route over time.
-    /// 
-    /// The start day of week controls the initial release phase of vessels
-    /// in the simulation.
+    /// Represents a cyclic liner shipping service route.
+    ///
+    /// A service route defines an ordered sequence of route segments. Each
+    /// segment refers to a physical port-to-port leg, while the sequence of
+    /// segments defines the operational rotation followed by deployed vessels.
+    ///
+    /// Bookings associated with this route specify how shipments use this
+    /// service route, including their departure and arrival segment indices.
     /// </summary>
     public class ServiceRoute
     {
@@ -27,24 +25,31 @@ namespace SimulationChallenge2026
         public string Name { get; set; } = string.Empty;
 
         /// <summary>
-        /// Start day of week in range [0, 7), representing the initial phase
-        /// of the service schedule.
+        /// Initial schedule offset of the service route, expressed as a day of week
+        /// in the range [0, 7).
+        ///
+        /// This value is used to phase the initial release of vessels in the simulation.
         /// </summary>
         public double StartDayOfWeek { get; set; }
 
         /// <summary>
-        /// Ordered sequence of partial service routes (legs) forming a cyclic route.
+        /// Ordered sequence of segments forming the cyclic service route.
+        ///
+        /// Each segment belongs to this service route and has a sequence index that
+        /// defines its order in the route rotation.
         /// </summary>
-        public List<PartialServiceRoute> PartialServiceRoutes { get; } = new();
+        public List<Segment> Segments { get; } = new();
 
         /// <summary>
-        /// Vessels deployed on this service route.
+        /// Vessels deployed to operate this service route.
         /// </summary>
         public List<Vessel> DeployedVessels { get; } = new();
 
         /// <summary>
-        /// Bookings associated with this route.
-        /// Bookings represent how shipments dynamically utilize the route.
+        /// Bookings assigned to this service route.
+        ///
+        /// A booking links a shipment to this route and records the segment indices
+        /// where the shipment should be loaded and discharged.
         /// </summary>
         public List<Booking> AssociatedBookings { get; } = new();
 
