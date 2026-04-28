@@ -34,16 +34,19 @@ static void PrintShipmentWaitingForLoadingAtOriginPortStatistics(Model sim)
     if (sim == null)
         throw new ArgumentNullException(nameof(sim));
 
-    var activity = sim.Shipment_WaitingForLoadingAtOriginPort;
+    var originActivity = sim.Shipment_WaitingForLoadingAtOriginPort;
+    var transshipmentActivity = sim.Shipment_WaitingForLoadingAtTransshipmentPort;
 
     Console.WriteLine();
     Console.WriteLine("============================================================");
-    Console.WriteLine("Shipment Waiting for Loading at Origin Port Statistics");
+    Console.WriteLine("Shipment Waiting for Loading Statistics");
     Console.WriteLine("============================================================");
 
-    PrintTeusByDemandMatrix(activity);
+    // Keep the original demand matrix.
+    PrintTeusByDemandMatrix(originActivity);
 
-    PrintTeusByOriginPortTable(activity);
+    // Extend the port-level table with transshipment waiting TEU.
+    PrintTeusByPortTable(originActivity, transshipmentActivity);
 
     Console.WriteLine();
 }
@@ -112,29 +115,72 @@ static void PrintTeusByDemandMatrix(Shipment_WaitingForLoadingAtOriginPort activ
     }
 }
 
-static void PrintTeusByOriginPortTable(Shipment_WaitingForLoadingAtOriginPort activity)
+static void PrintTeusByPortTable(
+    Shipment_WaitingForLoadingAtOriginPort originActivity,
+    Shipment_WaitingForLoadingAtTransshipmentPort transshipmentActivity)
 {
     Console.WriteLine();
-    Console.WriteLine("TEUs by Origin Port");
-    Console.WriteLine("------------------------------------------------------------");
-    Console.WriteLine(
-        $"{"Origin Port",-20}" +
-        $"{"Average TEUs Waiting",20}");
+    Console.WriteLine("Average Waiting TEUs by Port");
+    Console.WriteLine();
 
     Console.WriteLine(
-        $"{new string('-', 20),-20}" +
-        $"{new string('-', 20),20}");
+        $"{"Port",-25}" +
+        $"{"Origin Waiting TEU",20}" +
+        $"{"Transshipment Waiting TEU",28}" +
+        $"{"Total Waiting TEU",20}");
 
-    foreach (var item in activity.HC_TeusByOriginPort
-        .OrderBy(item => item.Key.Name))
+    Console.WriteLine(new string('-', 93));
+
+    var ports = originActivity.HC_TeusByOriginPort.Keys
+        .Union(transshipmentActivity.HC_TeusByTransshipmentPort.Keys)
+        .OrderBy(port => port.Name)
+        .ToList();
+
+    foreach (var port in ports)
     {
-        var originPort = item.Key;
-        var counter = item.Value;
+        double originAverageTeu = GetAverageCount(
+            originActivity.HC_TeusByOriginPort,
+            port);
+
+        double transshipmentAverageTeu = GetAverageCount(
+            transshipmentActivity.HC_TeusByTransshipmentPort,
+            port);
+
+        double totalAverageTeu = originAverageTeu + transshipmentAverageTeu;
 
         Console.WriteLine(
-            $"{originPort.Name,-20}" +
-            $"{counter.AverageCount,20:N0}");
+            $"{port.Name,-25}" +
+            $"{originAverageTeu,20:N0}" +
+            $"{transshipmentAverageTeu,28:N0}" +
+            $"{totalAverageTeu,20:N0}");
     }
+
+    Console.WriteLine(new string('-', 93));
+
+    double totalOriginAverageTeu = originActivity.HC_TeusByOriginPort
+        .Values
+        .Sum(counter => counter.AverageCount);
+
+    double totalTransshipmentAverageTeu = transshipmentActivity.HC_TeusByTransshipmentPort
+        .Values
+        .Sum(counter => counter.AverageCount);
+
+    Console.WriteLine(
+        $"{"TOTAL",-25}" +
+        $"{totalOriginAverageTeu,20:N0}" +
+        $"{totalTransshipmentAverageTeu,28:N0}" +
+        $"{totalOriginAverageTeu + totalTransshipmentAverageTeu,20:N0}");
+
+    Console.WriteLine();
+}
+
+static double GetAverageCount(
+    Dictionary<Port, O2DESNet.HourCounter> counters,
+    Port port)
+{
+    return counters.TryGetValue(port, out var counter)
+        ? counter.AverageCount
+        : 0.0;
 }
 
 #endregion

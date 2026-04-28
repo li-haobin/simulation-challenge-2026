@@ -1,4 +1,5 @@
-﻿using System;
+﻿using O2DESNet;
+using System;
 using System.Linq;
 
 namespace SimulationChallenge2026
@@ -93,5 +94,140 @@ namespace SimulationChallenge2026
             // - preserve completed bookings unchanged;
             // - incorporate congestion, delay, or stochastic effects.
         }
+
+        #region Statistics - TEU by Transshipment Port
+
+        /// <summary>
+        /// Time-weighted TEU counters grouped by transshipment port.
+        ///
+        /// Each counter tracks the total TEU volume of shipments currently waiting
+        /// for loading at the corresponding transshipment port.
+        ///
+        /// The counter increases when a shipment starts this activity and decreases
+        /// when the shipment departs from this activity.
+        /// </summary>
+        public Dictionary<Port, HourCounter> HC_TeusByTransshipmentPort { get; } = new();
+
+        protected override void Start(Shipment shipment)
+        {
+            base.Start(shipment);
+
+            var transshipmentPort = GetArrivalTransshipmentPort(shipment);
+
+            if (!HC_TeusByTransshipmentPort.TryGetValue(transshipmentPort, out var portCounter))
+            {
+                portCounter = AddHourCounter();
+                HC_TeusByTransshipmentPort[transshipmentPort] = portCounter;
+            }
+
+            portCounter.ObserveChange(shipment.TeuSize);
+        }
+
+        public override void Depart(Shipment shipment)
+        {
+            if (F_LoadsFinished.Contains(shipment))
+            {
+                base.Depart(shipment);
+                var transshipmentPort = GetDepartureTransshipmentPort(shipment);
+
+                if (!HC_TeusByTransshipmentPort.TryGetValue(transshipmentPort, out var portCounter))
+                {
+                    ThrowActivityException(
+                        nameof(Depart),
+                        $"Cannot update transshipment TEU statistics for Shipment {shipment.Index} " +
+                        $"because no HourCounter exists for transshipment port {transshipmentPort.Name}.");
+                }
+
+                portCounter.ObserveChange(-shipment.TeuSize);
+            }
+        }
+
+        private Port GetArrivalTransshipmentPort(Shipment shipment)
+        {
+            Require(
+                shipment.CurrentBookingIndex.HasValue,
+                nameof(GetArrivalTransshipmentPort),
+                $"Shipment {shipment.Index} has null CurrentBookingIndex.");
+
+            int currentBookingIndex = shipment.CurrentBookingIndex.Value;
+
+            var currentBooking = shipment.AssociatedBookings
+                .FirstOrDefault(booking => booking.SequenceIndex == currentBookingIndex);
+
+            currentBooking = RequireNotNull(
+                currentBooking,
+                nameof(GetArrivalTransshipmentPort),
+                $"Shipment {shipment.Index} booking with sequence index {currentBookingIndex}");
+
+            var serviceRoute = RequireNotNull(
+                currentBooking.ServiceRoute,
+                nameof(GetArrivalTransshipmentPort),
+                $"Shipment {shipment.Index} current booking service route");
+
+            var arrivalSegment = serviceRoute.Segments
+                .FirstOrDefault(segment =>
+                    segment.SequenceIndex == currentBooking.ArrivalSegmentIndex);
+
+            arrivalSegment = RequireNotNull(
+                arrivalSegment,
+                nameof(GetArrivalTransshipmentPort),
+                $"Shipment {shipment.Index} arrival segment {currentBooking.ArrivalSegmentIndex} " +
+                $"on service route {serviceRoute.Id}");
+
+            var associatedLeg = RequireNotNull(
+                arrivalSegment.AssociatedLeg,
+                nameof(GetArrivalTransshipmentPort),
+                $"Shipment {shipment.Index} arrival segment {arrivalSegment.SequenceIndex} associated leg");
+
+            return RequireNotNull(
+                associatedLeg.ArrivalPort,
+                nameof(GetArrivalTransshipmentPort),
+                $"Shipment {shipment.Index} arrival transshipment port");
+        }
+
+        private Port GetDepartureTransshipmentPort(Shipment shipment)
+        {
+            Require(
+                shipment.CurrentBookingIndex.HasValue,
+                nameof(GetDepartureTransshipmentPort),
+                $"Shipment {shipment.Index} has null CurrentBookingIndex.");
+
+            int currentBookingIndex = shipment.CurrentBookingIndex.Value;
+
+            var currentBooking = shipment.AssociatedBookings
+                .FirstOrDefault(booking => booking.SequenceIndex == currentBookingIndex);
+
+            currentBooking = RequireNotNull(
+                currentBooking,
+                nameof(GetDepartureTransshipmentPort),
+                $"Shipment {shipment.Index} booking with sequence index {currentBookingIndex}");
+
+            var serviceRoute = RequireNotNull(
+                currentBooking.ServiceRoute,
+                nameof(GetDepartureTransshipmentPort),
+                $"Shipment {shipment.Index} current booking service route");
+
+            var departureSegment = serviceRoute.Segments
+                .FirstOrDefault(segment =>
+                    segment.SequenceIndex == currentBooking.DepartureSegmentIndex);
+
+            departureSegment = RequireNotNull(
+                departureSegment,
+                nameof(GetDepartureTransshipmentPort),
+                $"Shipment {shipment.Index} departure segment {currentBooking.DepartureSegmentIndex} " +
+                $"on service route {serviceRoute.Id}");
+
+            var associatedLeg = RequireNotNull(
+                departureSegment.AssociatedLeg,
+                nameof(GetDepartureTransshipmentPort),
+                $"Shipment {shipment.Index} departure segment {departureSegment.SequenceIndex} associated leg");
+
+            return RequireNotNull(
+                associatedLeg.DeparturePort,
+                nameof(GetDepartureTransshipmentPort),
+                $"Shipment {shipment.Index} departure transshipment port");
+        }
+
+        #endregion
     }
 }

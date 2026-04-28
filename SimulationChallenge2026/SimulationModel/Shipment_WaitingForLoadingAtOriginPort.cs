@@ -374,39 +374,42 @@ namespace SimulationChallenge2026
 
         public override void Depart(Shipment shipment)
         {
-            base.Depart(shipment);
-
-            // Statistics: decrease TEU volume for this demand when the shipment leaves this activity.
-            var demand = RequireNotNull(
-                shipment.Demand,
-                nameof(Depart),
-                $"Demand of Shipment {shipment.Index}");
-
-            if (!HC_TeusByDemand.TryGetValue(demand, out var demandCounter))
+            if (F_LoadsFinished.Contains(shipment))
             {
-                ThrowActivityException(
+                base.Depart(shipment);
+
+                // Statistics: decrease TEU volume for this demand when the shipment leaves this activity.
+                var demand = RequireNotNull(
+                    shipment.Demand,
                     nameof(Depart),
-                    $"Cannot update TEU statistics for Shipment {shipment.Index} because no HourCounter exists for Demand {demand}. " +
-                    "This indicates that the shipment may not have started this activity before departure.");
-            }
+                    $"Demand of Shipment {shipment.Index}");
 
-            demandCounter.ObserveChange(-shipment.TeuSize);
+                if (!HC_TeusByDemand.TryGetValue(demand, out var demandCounter))
+                {
+                    ThrowActivityException(
+                        nameof(Depart),
+                        $"Cannot update TEU statistics for Shipment {shipment.Index} because no HourCounter exists for Demand {demand}. " +
+                        "This indicates that the shipment may not have started this activity before departure.");
+                }
 
-            // Statistics: decrease TEU volume for this demand origin port.
-            var originPort = RequireNotNull(
-                demand.OriginPort,
-                nameof(Depart),
-                $"Origin port of Demand {demand}");
+                demandCounter.ObserveChange(-shipment.TeuSize);
 
-            if (!HC_TeusByOriginPort.TryGetValue(originPort, out var originPortCounter))
-            {
-                ThrowActivityException(
+                // Statistics: decrease TEU volume for this demand origin port.
+                var originPort = RequireNotNull(
+                    demand.OriginPort,
                     nameof(Depart),
-                    $"Cannot update TEU statistics for Shipment {shipment.Index} because no HourCounter exists for origin port {originPort}. " +
-                    "This indicates that the shipment may not have started this activity before departure.");
-            }
+                    $"Origin port of Demand {demand}");
 
-            originPortCounter.ObserveChange(-shipment.TeuSize);
+                if (!HC_TeusByOriginPort.TryGetValue(originPort, out var originPortCounter))
+                {
+                    ThrowActivityException(
+                        nameof(Depart),
+                        $"Cannot update TEU statistics for Shipment {shipment.Index} because no HourCounter exists for origin port {originPort}. " +
+                        "This indicates that the shipment may not have started this activity before departure.");
+                }
+
+                originPortCounter.ObserveChange(-shipment.TeuSize);
+            }
         }
 
         #endregion
