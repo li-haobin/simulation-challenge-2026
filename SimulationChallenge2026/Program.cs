@@ -23,6 +23,8 @@ for (var day = updateIntervalDays; day <= totalDays; day += updateIntervalDays)
 
     PrintShipmentBeingTransportedStatistics(sim);
 
+    PrintServiceRouteCapacityUtilizationStatistics(sim);
+
     PrintVesselStatistics(sim);
 
     Console.WriteLine();
@@ -176,17 +178,17 @@ static void PrintPortLevelStatistics(
 
     foreach (var port in ports)
     {
-        double originAverageTeu = GetAverageCount(
+        double originAverageTeu = GetAverageCount_byPort(
             originActivity.HC_TeusByOriginPort,
             port);
 
-        double transshipmentAverageTeu = GetAverageCount(
+        double transshipmentAverageTeu = GetAverageCount_byPort(
             transshipmentActivity.HC_TeusByTransshipmentPort,
             port);
 
         double totalAverageTeu = originAverageTeu + transshipmentAverageTeu;
 
-        double averageVesselsWaiting = GetAverageCount(
+        double averageVesselsWaiting = GetAverageCount_byPort(
             vesselQueueActivity.HC_NumberOfVesselsByPort,
             port);
 
@@ -358,7 +360,81 @@ static void PrintVesselStatistics(Model sim)
     Console.WriteLine();
 }
 
-static double GetAverageCount(
+static void PrintServiceRouteCapacityUtilizationStatistics(Model sim)
+{
+    if (sim == null)
+        throw new ArgumentNullException(nameof(sim));
+
+    var vesselSailingActivity = sim.Vessel_Sailing;
+
+    Console.WriteLine();
+    Console.WriteLine("============================================================");
+    Console.WriteLine("Service Route Capacity and Utilization Statistics");
+    Console.WriteLine("============================================================");
+
+    Console.WriteLine(
+        $"{"Route",-10}" +
+        $"{"Name",-32}" +
+        $"{"Avg Capacity TEU",20}" +
+        $"{"Avg Carried TEU",20}" +
+        $"{"Utilization",15}");
+
+    Console.WriteLine(new string('-', 97));
+
+    var serviceRoutes = vesselSailingActivity.HC_TeuCapacityByServiceRoute.Keys
+        .Union(vesselSailingActivity.HC_CarriedTeusByServiceRoute.Keys)
+        .OrderBy(route => route.Id)
+        .ToList();
+
+    foreach (var serviceRoute in serviceRoutes)
+    {
+        double averageCapacityTeu = GetAverageCount_byServiceRoute(
+            vesselSailingActivity.HC_TeuCapacityByServiceRoute,
+            serviceRoute);
+
+        double averageCarriedTeu = GetAverageCount_byServiceRoute(
+            vesselSailingActivity.HC_CarriedTeusByServiceRoute,
+            serviceRoute);
+
+        double utilization = averageCapacityTeu > 0
+            ? averageCarriedTeu / averageCapacityTeu
+            : 0.0;
+
+        Console.WriteLine(
+            $"{serviceRoute.Id,-10}" +
+            $"{serviceRoute.Name,-32}" +
+            $"{averageCapacityTeu,20:N0}" +
+            $"{averageCarriedTeu,20:N0}" +
+            $"{utilization,15:P2}");
+    }
+
+    Console.WriteLine(new string('-', 97));
+
+    double totalAverageCapacityTeu = vesselSailingActivity
+        .HC_TeuCapacityByServiceRoute
+        .Values
+        .Sum(counter => counter.AverageCount);
+
+    double totalAverageCarriedTeu = vesselSailingActivity
+        .HC_CarriedTeusByServiceRoute
+        .Values
+        .Sum(counter => counter.AverageCount);
+
+    double totalUtilization = totalAverageCapacityTeu > 0
+        ? totalAverageCarriedTeu / totalAverageCapacityTeu
+        : 0.0;
+
+    Console.WriteLine(
+        $"{"TOTAL",-10}" +
+        $"{"",-32}" +
+        $"{totalAverageCapacityTeu,20:N0}" +
+        $"{totalAverageCarriedTeu,20:N0}" +
+        $"{totalUtilization,15:P2}");
+
+    Console.WriteLine();
+}
+
+static double GetAverageCount_byPort(
     Dictionary<Port, O2DESNet.HourCounter> counters,
     Port port)
 {
@@ -366,5 +442,16 @@ static double GetAverageCount(
         ? counter.AverageCount
         : 0.0;
 }
+
+static double GetAverageCount_byServiceRoute(
+    Dictionary<ServiceRoute, O2DESNet.HourCounter> counters,
+    ServiceRoute serviceRoute)
+{
+    return counters.TryGetValue(serviceRoute, out var counter)
+        ? counter.AverageCount
+        : 0.0;
+}
+
+
 
 #endregion

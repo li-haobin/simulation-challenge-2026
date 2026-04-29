@@ -1,4 +1,5 @@
-﻿using System;
+﻿using O2DESNet;
+using System;
 
 namespace SimulationChallenge2026
 {
@@ -73,5 +74,118 @@ namespace SimulationChallenge2026
 
             return TimeSpan.FromHours(hours);
         }
+
+        #region Statistics - TEU Capacity and Carried TEUs by Service Route
+
+        /// <summary>
+        /// Time-weighted TEU capacity counters grouped by assigned service route.
+        ///
+        /// Each counter tracks the total TEU capacity of vessels currently sailing
+        /// on the corresponding service route.
+        ///
+        /// The counter increases when a vessel starts sailing and decreases when
+        /// the vessel departs from this activity.
+        /// </summary>
+        public Dictionary<ServiceRoute, HourCounter> HC_TeuCapacityByServiceRoute { get; } = new();
+
+        /// <summary>
+        /// Time-weighted carried TEU counters grouped by assigned service route.
+        ///
+        /// Each counter tracks the total carried shipment TEU volume of vessels
+        /// currently sailing on the corresponding service route.
+        ///
+        /// The counter increases when a vessel starts sailing and decreases when
+        /// the vessel departs from this activity.
+        /// </summary>
+        public Dictionary<ServiceRoute, HourCounter> HC_CarriedTeusByServiceRoute { get; } = new();
+
+        protected override void Start(Vessel vessel)
+        {
+            base.Start(vessel);
+
+            var serviceRoute = RequireNotNull(
+                vessel.AssignedServiceRoute,
+                nameof(Start),
+                $"Assigned service route of Vessel {vessel.Index}");
+
+            var vesselClass = RequireNotNull(
+                vessel.VesselClass,
+                nameof(Start),
+                $"Vessel class of Vessel {vessel.Index}");
+
+            int teuCapacity = vesselClass.TeuCapacity;
+            int carriedTeus = vessel.CarriedShipments.Sum(shipment => shipment.TeuSize);
+
+            var capacityCounter = GetOrCreateServiceRouteCounter(
+                HC_TeuCapacityByServiceRoute,
+                serviceRoute);
+
+            var carriedTeusCounter = GetOrCreateServiceRouteCounter(
+                HC_CarriedTeusByServiceRoute,
+                serviceRoute);
+
+            capacityCounter.ObserveChange(teuCapacity);
+            carriedTeusCounter.ObserveChange(carriedTeus);
+        }
+
+        public override void Depart(Vessel vessel)
+        {
+            if (F_LoadsFinished.Contains(vessel))
+            {
+                var serviceRoute = RequireNotNull(
+                    vessel.AssignedServiceRoute,
+                    nameof(Depart),
+                    $"Assigned service route of Vessel {vessel.Index}");
+
+                var vesselClass = RequireNotNull(
+                    vessel.VesselClass,
+                    nameof(Depart),
+                    $"Vessel class of Vessel {vessel.Index}");
+
+                int teuCapacity = vesselClass.TeuCapacity;
+                int carriedTeus = vessel.CarriedShipments.Sum(shipment => shipment.TeuSize);
+
+                base.Depart(vessel);
+
+                if (!HC_TeuCapacityByServiceRoute.TryGetValue(serviceRoute, out var capacityCounter))
+                {
+                    ThrowActivityException(
+                        nameof(Depart),
+                        $"Cannot update sailing TEU capacity statistics for Vessel {vessel.Index} " +
+                        $"because no HourCounter exists for service route {serviceRoute.Id}. " +
+                        "This indicates that the vessel may not have started this activity before departure.");
+                }
+
+                if (!HC_CarriedTeusByServiceRoute.TryGetValue(serviceRoute, out var carriedTeusCounter))
+                {
+                    ThrowActivityException(
+                        nameof(Depart),
+                        $"Cannot update sailing carried TEU statistics for Vessel {vessel.Index} " +
+                        $"because no HourCounter exists for service route {serviceRoute.Id}. " +
+                        "This indicates that the vessel may not have started this activity before departure.");
+                }
+
+                capacityCounter.ObserveChange(-teuCapacity);
+                carriedTeusCounter.ObserveChange(-carriedTeus);
+            }
+        }
+
+        /// <summary>
+        /// Gets an existing service-route counter or creates a new one if it does not exist.
+        /// </summary>
+        private HourCounter GetOrCreateServiceRouteCounter(
+            Dictionary<ServiceRoute, HourCounter> counters,
+            ServiceRoute serviceRoute)
+        {
+            if (!counters.TryGetValue(serviceRoute, out var counter))
+            {
+                counter = AddHourCounter();
+                counters[serviceRoute] = counter;
+            }
+
+            return counter;
+        }
+
+        #endregion
     }
 }

@@ -21,7 +21,7 @@ namespace SimulationChallenge2026
        
         public Shipment_Generator(
             MaritimeDataContext maritimeDataContext,
-            double meanShipmentsPerDay = 1.0,
+            double meanShipmentsPerDay = 10,
             int seed = 0) : base(id: nameof(Shipment_Generator), seed: seed)
         {
             MaritimeDataContext = maritimeDataContext ?? throw new ArgumentNullException(nameof(maritimeDataContext));

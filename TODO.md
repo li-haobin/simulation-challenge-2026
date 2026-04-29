@@ -2,15 +2,6 @@
 
 ## Statistics and Scenario Settings
 
-### Vessel-Level Statistics
-
-- Collect vessel loading and utilization statistics, including:
-  - TEU load after each loading/discharging activity;
-  - average vessel load;
-  - maximum vessel load;
-  - vessel capacity utilization over time;
-  - utilization by service route or vessel class, if applicable.
-
 ### Berth- and Port-Level Statistics
 
 - Collect utilization statistics for each berth, including:
